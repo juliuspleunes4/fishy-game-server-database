@@ -96,3 +96,39 @@ CREATE TABLE player_effects (
 CREATE INDEX idx_player_effects_expiry ON player_effects(expiry_time);
 CREATE INDEX idx_player_effects_user_id ON player_effects(user_id);
 
+-- Competition types: 1=MostFishCompetition, 2=MostItemsCompetition, 3=LargestFishCompetition
+CREATE TABLE competitions (
+    competition_id UUID PRIMARY KEY,
+    competition_type INTEGER NOT NULL,
+    target_fish_id INTEGER NOT NULL,
+    start_time TIMESTAMPTZ NOT NULL,
+    end_time TIMESTAMPTZ NOT NULL,
+    reward_currency TEXT NOT NULL, -- 'coins' or 'bucks'
+    prize_1st INTEGER NOT NULL,
+    prize_2nd INTEGER NOT NULL,
+    prize_3rd INTEGER NOT NULL,
+    prize_4th INTEGER NOT NULL,
+    prize_5th INTEGER NOT NULL,
+    prize_6th INTEGER NOT NULL,
+    prize_7th INTEGER NOT NULL,
+    prize_8th INTEGER NOT NULL,
+    prize_9th INTEGER NOT NULL,
+    prize_10th INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT valid_competition_type CHECK (competition_type IN (1, 2, 3)),
+    CONSTRAINT valid_currency CHECK (reward_currency IN ('coins', 'bucks')),
+    CONSTRAINT valid_times CHECK (start_time < end_time)
+);
+
+CREATE TABLE competition_participants (
+    competition_id UUID NOT NULL REFERENCES competitions(competition_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(user_id),
+    user_name TEXT NOT NULL,
+    score INTEGER NOT NULL DEFAULT 0,
+    last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (competition_id, user_id)
+);
+
+CREATE INDEX idx_competitions_time_range ON competitions(start_time, end_time);
+CREATE INDEX idx_competitions_active ON competitions(start_time, end_time) WHERE end_time > NOW();
+CREATE INDEX idx_competition_participants_score ON competition_participants(competition_id, score DESC);

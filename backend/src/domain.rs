@@ -124,3 +124,69 @@ pub struct RemoveActiveEffectRequest {
     pub user_id: Uuid,
     pub item_id: i32,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
+pub struct Competition {
+    pub competition_id: Uuid,
+    pub competition_type: i32,
+    pub target_fish_id: i32,
+    #[schema(value_type = String, format = DateTime)]
+    pub start_time: DateTime<Utc>,
+    #[schema(value_type = String, format = DateTime)]
+    pub end_time: DateTime<Utc>,
+    pub reward_currency: String,
+    pub prize_1st: i32,
+    pub prize_2nd: i32,
+    pub prize_3rd: i32,
+    pub prize_4th: i32,
+    pub prize_5th: i32,
+    pub prize_6th: i32,
+    pub prize_7th: i32,
+    pub prize_8th: i32,
+    pub prize_9th: i32,
+    pub prize_10th: i32,
+    #[schema(value_type = String, format = DateTime)]
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
+pub struct CompetitionParticipant {
+    pub competition_id: Uuid,
+    pub user_id: Uuid,
+    pub user_name: String,
+    pub score: i32,
+    #[schema(value_type = String, format = DateTime)]
+    pub last_updated: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CompetitionWithLeaderboard {
+    #[serde(flatten)]
+    pub competition: Competition,
+    pub leaderboard: Vec<CompetitionParticipant>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CreateCompetitionRequest {
+    pub competition_type: i32,
+    pub target_fish_id: i32,
+    #[schema(value_type = String, format = DateTime)]
+    pub start_time: DateTime<Utc>,
+    #[schema(value_type = String, format = DateTime)]
+    pub end_time: DateTime<Utc>,
+    pub reward_currency: String,
+    pub prizes: Vec<i32>, // Must contain exactly 10 values for places 1-10
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdateScoreRequest {
+    pub competition_id: Uuid,
+    pub user_id: Uuid,
+    pub user_name: String,
+    pub score: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct GenerateCompetitionsRequest {
+    pub count: i32, // Number of competitions to generate
+}
