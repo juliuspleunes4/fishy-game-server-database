@@ -18,7 +18,7 @@ CREATE TABLE friend_requests (
     user_one_id UUID NOT NULL,
     user_two_id UUID NOT NULL,
     request_sender_id UUID NOT NULL,
-    request_created_time TIMESTAMPTZ NOT NULL
+    request_created_time TIMESTAMPTZ NOT NULL,
     CONSTRAINT user_order CHECK (user_one_id < user_two_id), -- Also makes sure that a player is not requesting to befriend himself
     CONSTRAINT sender_in_pair CHECK (request_sender_id = user_one_id OR request_sender_id = user_two_id),
     CONSTRAINT unique_friend_request UNIQUE (user_one_id, user_two_id)
