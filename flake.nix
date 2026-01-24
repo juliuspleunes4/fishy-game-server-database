@@ -30,7 +30,6 @@
         craneLib = crane.mkLib pkgs;
         src = ./backend;
 
-        # Common arguments can be set here to avoid repeating them later
         commonArgs = {
           inherit src;
           strictDeps = true;
@@ -38,12 +37,9 @@
           buildInputs = [
             # Add additional build inputs here
           ] ++ lib.optionals pkgs.stdenv.isDarwin [
-            # Additional darwin specific inputs can be set here
             pkgs.libiconv
           ];
 
-          # Additional environment variables can be set directly
-          # MY_CUSTOM_VAR = "some value";
           SQLX_OFFLINE = "1";
         };
 
@@ -55,53 +51,77 @@
             "rust-src"
           ]);
 
-        # Build *just* the cargo dependencies, so we can reuse
-        # all of that work (e.g. via cachix) when running in CI
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
-        # Build the actual crate itself, reusing the dependency
-        # artifacts from above.
         backend = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
         });
+
+        # Database Configuration
+        dbName = "fishydb";
+        dbUser = "fishyuser";
+        dataDir = "./.pg_data";
+        passFile = "./.pg_password";
+
+        # Database Script (App)
+        dbScript = pkgs.writeShellScriptBin "fishy-db" ''
+           export PGDATA="${dataDir}"
+           export PGHOST="$PWD/postgres_socket"
+          
+           mkdir -p "$PGHOST"
+
+           if [ ! -d "$PGDATA" ]; then
+             echo "Initializing postgres data directory..."
+             ${pkgs.postgresql_16}/bin/initdb --auth=trust --no-locale --encoding=UTF8 > /dev/null
+
+             ${pkgs.openssl}/bin/openssl rand -base64 12 > "${passFile}"
+             PASS=$(cat "${passFile}")
+
+             echo "Setting up User and DB..."
+             ${pkgs.postgresql_16}/bin/pg_ctl start -w -o "-k '$PGHOST' -p 5432"
+            
+             ${pkgs.postgresql_16}/bin/createuser -h "$PGHOST" --superuser ${dbUser}
+             ${pkgs.postgresql_16}/bin/createdb -h "$PGHOST" -O ${dbUser} ${dbName}
+             ${pkgs.postgresql_16}/bin/psql -h "$PGHOST" -c "ALTER USER ${dbUser} WITH PASSWORD '$PASS';" postgres
+            ${pkgs.postgresql_16}/bin/psql -h "$PGHOST" -d ${dbName} -f ./backend/database-init.sql
+             ${pkgs.postgresql_16}/bin/pg_ctl stop
+           fi
+
+           PASS=$(cat "${passFile}")
+           DB_URL="postgres://${dbUser}:$PASS@127.0.0.1:5432/${dbName}"
+         
+          # Update backend/.env (Remove old URL if exists, then append new one)
+           touch ./backend/.env
+           ${pkgs.gnused}/bin/sed -i '/^DATABASE_URL=/d' ./backend/.env
+           echo "DATABASE_URL=$DB_URL" >> ./backend/.env
+         
+           echo "Socket: $PGHOST"
+          
+           exec ${pkgs.postgresql_16}/bin/postgres -k "$PGHOST" -p 5432
+        '';
+
       in
       {
         checks = {
-          # Build the crate as part of `nix flake check` for convenience
           inherit backend;
 
-          # Run clippy (and deny all warnings) on the crate source,
-          # again, reusing the dependency artifacts from above.
-          #
-          # Note that this is done as a separate derivation so that
-          # we can block the CI if there are issues here, but not
-          # prevent downstream consumers from building our crate by itself.
           my-crate-clippy = craneLib.cargoClippy (commonArgs // {
             inherit cargoArtifacts;
             cargoClippyExtraArgs = "--all-targets -- --deny warnings";
           });
 
-          # my-crate-doc = craneLib.cargoDoc (commonArgs // {
-          #   inherit cargoArtifacts;
-          # });
-
-          # Check formatting
           my-crate-fmt = craneLib.cargoFmt {
             inherit src;
           };
 
           my-crate-toml-fmt = craneLib.taploFmt {
             src = pkgs.lib.sources.sourceFilesBySuffices src [ ".toml" ];
-            # taplo arguments can be further customized below as needed
-            # taploExtraArgs = "--config ./taplo.toml";
           };
 
-          # Audit dependencies
           my-crate-audit = craneLib.cargoAudit {
             inherit src advisory-db;
           };
 
-          # Audit licenses
           my-crate-deny = craneLib.cargoDeny {
             inherit src;
           };
@@ -115,22 +135,34 @@
           });
         };
 
-        apps.default = flake-utils.lib.mkApp {
-          drv = backend;
+        apps = {
+          default = flake-utils.lib.mkApp {
+            drv = backend;
+          };
+          # Run: nix run .#db
+          db = flake-utils.lib.mkApp {
+            drv = dbScript;
+            name = "fishy-db";
+          };
         };
 
         devShells.default = craneLibLLvmTools.devShell {
-          # Inherit inputs from checks.
           checks = self.checks.${system};
 
           shellHook = ''
-            echo "🦀Welcome to fishy backend 🦀"
-            echo "Run with cargo run ./backend"
+            if [ -f ./backend/.env ]; then
+              export $(cat ./backend/.env | xargs)
+            fi
+
+            echo "🦀 Welcome to fishy backend 🦀"
+            echo "Run 'nix run .#db' to start the database."
+            echo "Run 'cargo run ./backend' to start the backend."
           '';
-          # Extra inputs can be added here; cargo and rustc are provided by default.
+
           packages = [
             pkgs.sqlx-cli
             pkgs.postgresql_16
+            pkgs.openssl
           ];
         };
       });

@@ -2,3 +2,6 @@
 backend/target
 result
 backend/.env
+postgress_socket
+.pg_data
+.pg_password
