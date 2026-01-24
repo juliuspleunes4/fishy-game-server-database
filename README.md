@@ -36,12 +36,14 @@ git clone git@github.com:sempruijs/rust-backend-template.git
 cd rust-backend-template
 ```
 
-3. Set up PostgreSQL on your machine. Run:
+2. Set up PostgreSQL on your machine. Run:
    if ur using holy nix
 
 ```shell
 nix run .#db
 ```
+
+    otherwise run
 
 ```shell
 psql postgres://username:password@host:port/database_name
@@ -61,14 +63,14 @@ CREATE TABLE users (
 
 Note that you can easily use [migrations with SQLx](https://docs.rs/sqlx/latest/sqlx/macro.migrate.html) as your schema grows.
 
-4. Set variables:
+3. Set variables:
 
 ```shell
 export DATABASE_URL="postgres://username:password@host:port/database_name"
 export SECRET_KEY="Your secret key :)"
 ```
 
-5. Run:
+4. Run:
 
 ```shell
 cd backend/
@@ -85,4 +87,3 @@ Thank you ❤️
 ## License
 
 MIT
-
