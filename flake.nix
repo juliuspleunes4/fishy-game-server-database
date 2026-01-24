@@ -123,8 +123,6 @@
           # Inherit inputs from checks.
           checks = self.checks.${system};
 
-          # Additional dev-shell environment variables can be set directly
-          # MY_CUSTOM_DEVELOPMENT_VAR = "something else";
           shellHook = ''
             echo "🦀Welcome to fishy backend 🦀"
             echo "Run with cargo run ./backend"
