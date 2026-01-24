@@ -2,7 +2,7 @@
 
 Easily get started building your backend with Rust and PostgreSQL.
 
-## About 
+## About
 
 Building a backend in Rust is not so hard if you know where to start.
 
@@ -10,6 +10,7 @@ This is a not-so-feature-rich template so you can build right away without any d
 The template uses the popular [inversion of control](https://en.wikipedia.org/wiki/Inversion_of_control) scheme, which is used in many backends.
 
 The template contains:
+
 - Create a user endpoint.
 - Get user details endpoint protected with JWT.
 - Login for receiving a JWT.
@@ -18,6 +19,7 @@ The template contains:
 - An optional Nix flake for deployment.
 
 The template uses:
+
 - [Rocket](https://rocket.rs/), a popular and easy-to-use web framework.
 - [SQLx](https://github.com/launchbadge/sqlx), for interacting with the PostgreSQL database.
 - [jsonwebtoken](https://docs.rs/jsonwebtoken/latest/jsonwebtoken/), for generating JWTs.
@@ -34,14 +36,14 @@ git clone git@github.com:sempruijs/rust-backend-template.git
 cd rust-backend-template
 ```
 
-2. Remove the `flake.nix` and `flake.lock` if you don't want to use Nix.
+2. Set up PostgreSQL on your machine. Run:
+   if ur using holy nix
 
 ```shell
-rm flake.nix
-rm flake.lock
+nix run .#db
 ```
 
-3. Set up PostgreSQL on your machine. Run:
+    otherwise run
 
 ```shell
 psql postgres://username:password@host:port/database_name
@@ -61,14 +63,14 @@ CREATE TABLE users (
 
 Note that you can easily use [migrations with SQLx](https://docs.rs/sqlx/latest/sqlx/macro.migrate.html) as your schema grows.
 
-4. Set variables:
+3. Set variables:
 
 ```shell
 export DATABASE_URL="postgres://username:password@host:port/database_name"
 export SECRET_KEY="Your secret key :)"
 ```
 
-5. Run:
+4. Run:
 
 ```shell
 cd backend/
