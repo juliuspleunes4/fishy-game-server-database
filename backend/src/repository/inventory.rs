@@ -12,11 +12,7 @@ pub trait InventoryRepository: Send + Sync {
         state_blob: String,
     ) -> Result<(), sqlx::Error>;
 
-    async fn destroy(
-        &self,
-        user_id: Uuid,
-        item_uid: Uuid
-    ) -> Result<(), sqlx::Error>;
+    async fn destroy(&self, user_id: Uuid, item_uid: Uuid) -> Result<(), sqlx::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -51,7 +47,8 @@ impl InventoryRepository for InventoryRepositoryImpl {
             state_blob,
         )
         .fetch_optional(&self.pool)
-        .await {
+        .await
+        {
             Ok(o) => o,
             Err(e) => {
                 dbg!(&e);
@@ -61,11 +58,7 @@ impl InventoryRepository for InventoryRepositoryImpl {
         Ok(())
     }
 
-    async fn destroy(
-        &self,
-        user_id: Uuid,
-        item_uid: Uuid,
-    ) -> Result<(), sqlx::Error> {
+    async fn destroy(&self, user_id: Uuid, item_uid: Uuid) -> Result<(), sqlx::Error> {
         let result = match sqlx::query!(
             "DELETE FROM inventory_item WHERE
             user_id = $1 AND item_uuid = $2",
@@ -73,7 +66,8 @@ impl InventoryRepository for InventoryRepositoryImpl {
             item_uid,
         )
         .execute(&self.pool)
-        .await {
+        .await
+        {
             Ok(o) => o,
             Err(e) => {
                 dbg!(&e);
@@ -88,4 +82,3 @@ impl InventoryRepository for InventoryRepositoryImpl {
         Ok(())
     }
 }
-

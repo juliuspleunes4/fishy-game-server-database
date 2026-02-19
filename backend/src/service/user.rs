@@ -16,10 +16,7 @@ pub trait UserService: Send + Sync {
         password: String,
     ) -> Result<LoginResponse, sqlx::Error>;
 
-    async fn retreive_username(
-        &self,
-        email: String,
-    ) -> Result<bool, sqlx::Error>;
+    async fn retreive_username(&self, email: String) -> Result<bool, sqlx::Error>;
 
     async fn change_password(
         &self,
@@ -38,9 +35,9 @@ pub struct UserServiceImpl<T: UserRepository> {
 impl<R: UserRepository> UserServiceImpl<R> {
     // create a new function for UserServiceImpl.
     pub fn new(user_repository: R, secret_key: String) -> Self {
-        Self { 
+        Self {
             user_repository,
-            secret_key 
+            secret_key,
         }
     }
 }
@@ -65,31 +62,27 @@ impl<R: UserRepository> UserService for UserServiceImpl<R> {
             created: Utc::now(),
         };
 
-        match self.user_repository.create(user).await {
+        match self.user_repository.create_new_user(user).await {
             Ok(_) => Ok(LoginResponse {
                 code: 200,
                 jwt: generate_jwt(user_id, &self.secret_key)?,
-                }),
+            }),
             Err(e) => {
-                dbg!(&e); 
-                return Err(e);
+                dbg!(&e);
+                return Err(sqlx::Error::BeginFailed);
             }
         }
     }
 
-    async fn retreive_username(
-        &self,
-        email: String,
-    ) -> Result<bool, sqlx::Error> {
+    async fn retreive_username(&self, email: String) -> Result<bool, sqlx::Error> {
         match self.user_repository.get_username_from_email(email).await {
             Ok(_) => Ok(true),
             Err(e) => {
-                dbg!(&e); 
+                dbg!(&e);
                 return Ok(false);
             }
         }
     }
-
 
     async fn change_password(
         &self,
@@ -98,7 +91,6 @@ impl<R: UserRepository> UserService for UserServiceImpl<R> {
     ) -> Result<bool, sqlx::Error> {
         Ok(false)
     }
-
 
     async fn from_uuid(&self, user_id: Uuid) -> Result<Option<User>, sqlx::Error> {
         // recieve the user from the database given a user_id.

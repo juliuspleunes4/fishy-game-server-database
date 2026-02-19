@@ -10,7 +10,6 @@ pub struct Claims {
     pub exp: usize, // Expiration time (as a timestamp)
 }
 
-
 pub fn generate_jwt(user_id: Uuid, secret_key: &str) -> Result<String, sqlx::Error> {
     // calculate experation time.
     let expiration = Utc::now()

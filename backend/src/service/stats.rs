@@ -1,7 +1,10 @@
 use rocket::async_trait;
 use uuid::Uuid;
 
-use crate::{domain::{ItemType, SelectItemRequest, StatFish}, repository::stats::StatsRepository};
+use crate::{
+    domain::{ItemType, SelectItemRequest, StatFish},
+    repository::stats::StatsRepository,
+};
 
 // Here you add your business logic here.
 #[async_trait]
@@ -55,8 +58,16 @@ impl<R: StatsRepository> StatsService for StatsServiceImpl<R> {
 
     async fn select_item(&self, item_request: SelectItemRequest) -> Result<(), sqlx::Error> {
         match item_request.item_type {
-            ItemType::Rod => self.stats_repository.select_rod(item_request.user_id, item_request.item_uid).await,
-            ItemType::Bait => self.stats_repository.select_bait(item_request.user_id, item_request.item_uid).await,
+            ItemType::Rod => {
+                self.stats_repository
+                    .select_rod(item_request.user_id, item_request.item_uid)
+                    .await
+            }
+            ItemType::Bait => {
+                self.stats_repository
+                    .select_bait(item_request.user_id, item_request.item_uid)
+                    .await
+            }
             ItemType::Extra => unimplemented!(),
         }
     }

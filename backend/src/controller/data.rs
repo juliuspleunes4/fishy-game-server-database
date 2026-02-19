@@ -10,7 +10,7 @@ use crate::{domain::UserData, service::data::DataService};
 /// Request body for adding an item.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 struct RetreiveDataRequest {
-    pub user_id: Uuid
+    pub user_id: Uuid,
 }
 
 // Utoipa is the crate that generates swagger documentation for your endpoints.
@@ -34,12 +34,7 @@ async fn retreive_player_data(
     payload: Json<RetreiveDataRequest>,
     inventory_service: &State<Arc<dyn DataService>>,
 ) -> Json<Option<UserData>> {
-    match inventory_service
-        .retreive_all(
-            payload.user_id
-        )
-        .await
-    {
+    match inventory_service.retreive_all(payload.user_id).await {
         Ok(o) => Json(Some(o)),
         Err(_) => Json(None),
     }

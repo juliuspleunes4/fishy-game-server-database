@@ -2,15 +2,13 @@ use rocket::async_trait;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::domain::{ActiveEffect, FishData, Friend, FriendRequest, InventoryItem, MailEntry, UserData};
-
+use crate::domain::{
+    ActiveEffect, FishData, Friend, FriendRequest, InventoryItem, MailEntry, UserData,
+};
 
 #[async_trait]
 pub trait DataRepository: Send + Sync {
-    async fn retreive_all(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Option<UserData>, sqlx::Error>;
+    async fn retreive_all(&self, user_id: Uuid) -> Result<Option<UserData>, sqlx::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -26,10 +24,7 @@ impl DataRepositoryImpl {
 
 #[async_trait]
 impl DataRepository for DataRepositoryImpl {
-    async fn retreive_all(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Option<UserData>, sqlx::Error> {
+    async fn retreive_all(&self, user_id: Uuid) -> Result<Option<UserData>, sqlx::Error> {
         let rows = match sqlx::query!(
             "SELECT 
             u.name,
@@ -127,54 +122,60 @@ impl DataRepository for DataRepositoryImpl {
         };
 
         if let Some(data) = rows {
-            let fish_data: Vec<FishData> = match serde_json::from_value(data.fish_data.unwrap_or_default()) {
-                Ok(o) => o,
-                Err(e) => {
-                    dbg!(&e);
-                    return Err(sqlx::Error::WorkerCrashed);
-                }
-            };
+            let fish_data: Vec<FishData> =
+                match serde_json::from_value(data.fish_data.unwrap_or_default()) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        dbg!(&e);
+                        return Err(sqlx::Error::WorkerCrashed);
+                    }
+                };
 
-            let inventory_items: Vec<InventoryItem> = match serde_json::from_value(data.inventory_item.unwrap_or_default()) {
-                Ok(o) => o,
-                Err(e) => {
-                    dbg!(&e);
-                    return Err(sqlx::Error::WorkerCrashed);
-                }
-            };
+            let inventory_items: Vec<InventoryItem> =
+                match serde_json::from_value(data.inventory_item.unwrap_or_default()) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        dbg!(&e);
+                        return Err(sqlx::Error::WorkerCrashed);
+                    }
+                };
 
-            let mailbox: Vec<MailEntry> = match serde_json::from_value(data.mailbox.unwrap_or_default()) {
-                Ok(o) => o,
-                Err(e) => {
-                    dbg!(&e);
-                    return Err(sqlx::Error::WorkerCrashed);
-                }
-            };
+            let mailbox: Vec<MailEntry> =
+                match serde_json::from_value(data.mailbox.unwrap_or_default()) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        dbg!(&e);
+                        return Err(sqlx::Error::WorkerCrashed);
+                    }
+                };
 
-            let friends: Vec<Friend> = match serde_json::from_value(data.friends.unwrap_or_default()) {
-                Ok(o) => o,
-                Err(e) => {
-                    dbg!(&e);
-                    return Err(sqlx::Error::WorkerCrashed);
-                }
-            };
+            let friends: Vec<Friend> =
+                match serde_json::from_value(data.friends.unwrap_or_default()) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        dbg!(&e);
+                        return Err(sqlx::Error::WorkerCrashed);
+                    }
+                };
 
-            let friend_requests: Vec<FriendRequest> = match serde_json::from_value(data.friend_requests.unwrap_or_default()) {
-                Ok(o) => o,
-                Err(e) => {
-                    dbg!(&e);
-                    return Err(sqlx::Error::WorkerCrashed);
-                }
-            };
+            let friend_requests: Vec<FriendRequest> =
+                match serde_json::from_value(data.friend_requests.unwrap_or_default()) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        dbg!(&e);
+                        return Err(sqlx::Error::WorkerCrashed);
+                    }
+                };
 
-            let active_effects: Vec<ActiveEffect> = match serde_json::from_value(data.player_effects.unwrap_or_default()) {
-                Ok(o) => o,
-                Err(e) => {
-                    dbg!(&e);
-                    return Err(sqlx::Error::WorkerCrashed);
-                }
-            };
-        
+            let active_effects: Vec<ActiveEffect> =
+                match serde_json::from_value(data.player_effects.unwrap_or_default()) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        dbg!(&e);
+                        return Err(sqlx::Error::WorkerCrashed);
+                    }
+                };
+
             let user_data = UserData {
                 name: data.name,
                 xp: data.xp,
@@ -190,7 +191,7 @@ impl DataRepository for DataRepositoryImpl {
                 friend_requests,
                 active_effects,
             };
-        
+
             return Ok(Some(user_data));
         }
         Err(sqlx::Error::WorkerCrashed)

@@ -39,7 +39,6 @@ struct DestroyItemRequest {
     pub item_uid: Uuid,
 }
 
-
 // Utoipa is the crate that generates swagger documentation for your endpoints.
 // The documentation for each endpoint is combined in docs.rs
 // Make sure to add your endpoint in docs.rs when you write new endpoints.
@@ -97,10 +96,7 @@ async fn destroy_item(
     inventory_service: &State<Arc<dyn InventoryService>>,
 ) -> Json<bool> {
     match inventory_service
-        .destroy(
-            payload.user_id,
-            payload.item_uid,
-        )
+        .destroy(payload.user_id, payload.item_uid)
         .await
     {
         Ok(()) => Json(true),

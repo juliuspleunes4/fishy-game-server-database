@@ -1,15 +1,19 @@
 use crate::controller::authentication::authentication_routes;
 use crate::controller::stats::stats_routes;
+use crate::controller::user::*;
+use crate::docs::ApiDoc;
 use crate::domain::User;
 use crate::repository::friends::FriendRepositoryImpl;
+use crate::repository::user::UserRepositoryImpl;
 use crate::service::authentication::*;
 use crate::service::user::UserService;
+use crate::service::user::UserServiceImpl;
 use crate::AuthenticationService;
 use controller::data::data_routes;
 use controller::effects::routes as effects_routes;
+use controller::friends::friend_routes;
 use controller::inventory::inventory_routes;
 use controller::mail::mail_routes;
-use controller::friends::friend_routes;
 use dotenv::dotenv;
 use repository::data::DataRepositoryImpl;
 use repository::effects::EffectsRepositoryImpl;
@@ -25,6 +29,7 @@ use rocket::Request;
 use rocket::State;
 use rocket_cors::AllowedOrigins;
 use rocket_cors::{AllowedHeaders, CorsOptions};
+use sea_orm::Database;
 use service::data::DataService;
 use service::data::DataServiceImpl;
 use service::effects::EffectsService;
@@ -37,15 +42,11 @@ use service::mail::MailService;
 use service::mail::MailServiceImpl;
 use service::stats::StatsService;
 use service::stats::StatsServiceImpl;
+use sqlx::PgPool;
 use std::env;
 use std::sync::Arc;
-use sqlx::PgPool;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-use crate::controller::user::*;
-use crate::docs::ApiDoc;
-use crate::repository::user::UserRepositoryImpl;
-use crate::service::user::UserServiceImpl;
 
 extern crate rocket;
 
@@ -53,6 +54,7 @@ extern crate rocket;
 pub mod controller;
 pub mod docs;
 pub mod domain;
+pub mod entity;
 pub mod repository;
 pub mod service;
 pub mod utils;
@@ -113,6 +115,9 @@ async fn main() -> Result<(), rocket::Error> {
 
     // Connect to postgres database.
     let pool = PgPool::connect_lazy(&database_url).expect("Failed to connect to the database");
+    let db = Database::connect(&database_url)
+        .await
+        .expect("Failed to create SeaORM database connection");
 
     // Alow request from any origin.
     // You should customize this if you want to make your backend more secure.
@@ -126,7 +131,7 @@ async fn main() -> Result<(), rocket::Error> {
     .expect("Failed to create CORS configuration");
 
     // Build the repository layers and service layers.
-    let user_repository = UserRepositoryImpl::new(pool.clone());
+    let user_repository = UserRepositoryImpl::new(db.clone());
     let data_repository = DataRepositoryImpl::new(pool.clone());
     let effects_repository = EffectsRepositoryImpl::new(pool.clone());
     let friends_repository = FriendRepositoryImpl::new(pool.clone());
@@ -134,42 +139,43 @@ async fn main() -> Result<(), rocket::Error> {
     let mail_repository = MailRepositoryImpl::new(pool.clone());
     let inventory_repository = InventoryRepositoryImpl::new(pool.clone());
 
-    let user_service: Arc<dyn UserService> =
-        Arc::new(UserServiceImpl::new(user_repository.clone(), secret_key.clone()));
+    let user_service: Arc<dyn UserService> = Arc::new(UserServiceImpl::new(
+        user_repository.clone(),
+        secret_key.clone(),
+    ));
 
     let authentication_service: Arc<dyn AuthenticationService> = Arc::new(
         AuthenticationServiceImpl::new(user_repository.clone(), secret_key.clone()),
     );
 
-    let data_service: Arc<dyn DataService> = Arc::new(
-        DataServiceImpl::new(data_repository.clone())
-    );
+    let data_service: Arc<dyn DataService> =
+        Arc::new(DataServiceImpl::new(data_repository.clone()));
 
-    let friend_service: Arc<dyn FriendService> = Arc::new(
-        FriendServiceImpl::new(friends_repository.clone())
-    );
+    let friend_service: Arc<dyn FriendService> =
+        Arc::new(FriendServiceImpl::new(friends_repository.clone()));
 
     let stats_service: Arc<dyn StatsService> =
         Arc::new(StatsServiceImpl::new(stats_repository.clone()));
 
-    let mail_service: Arc<dyn MailService> = Arc::new(
-        MailServiceImpl::new(mail_repository.clone())
-    );
+    let mail_service: Arc<dyn MailService> =
+        Arc::new(MailServiceImpl::new(mail_repository.clone()));
 
-    let inventory_service: Arc<dyn InventoryService> = Arc::new(
-        InventoryServiceImpl::new(inventory_repository.clone())
-    );
+    let inventory_service: Arc<dyn InventoryService> =
+        Arc::new(InventoryServiceImpl::new(inventory_repository.clone()));
 
-    let effects_service: Arc<dyn EffectsService> = Arc::new(
-        EffectsServiceImpl::new(effects_repository.clone())
-    );
+    let effects_service: Arc<dyn EffectsService> =
+        Arc::new(EffectsServiceImpl::new(effects_repository.clone()));
 
     // Add here more repositories and services when your backend grows.
 
     // Set rocket configuration.
     let config = Config {
-        port: port.parse().expect(&format!("could not parse port: {:?}", port)),
-        address: listening_ip.parse().expect(&format!("Could not parse listening ip: {:?}", listening_ip)),
+        port: port
+            .parse()
+            .expect(&format!("could not parse port: {:?}", port)),
+        address: listening_ip
+            .parse()
+            .expect(&format!("Could not parse listening ip: {:?}", listening_ip)),
         ..Config::debug_default()
     };
 

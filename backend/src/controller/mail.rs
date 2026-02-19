@@ -63,7 +63,7 @@ async fn create_mail(
             payload.sender_id,
             payload.receiver_ids.clone(),
             payload.title.clone(),
-            payload.message.clone()
+            payload.message.clone(),
         )
         .await
     {
@@ -152,5 +152,10 @@ async fn change_archive_state(
 
 // Combine all the user routes.
 pub fn mail_routes() -> Vec<rocket::Route> {
-    routes![create_mail, delete_mail, change_read_state, change_archive_state]
+    routes![
+        create_mail,
+        delete_mail,
+        change_read_state,
+        change_archive_state
+    ]
 }

@@ -14,11 +14,7 @@ pub trait InventoryService: Send + Sync {
         state_blob: String,
     ) -> Result<(), sqlx::Error>;
 
-    async fn destroy(
-        &self,
-        user_id: Uuid,
-        item_uid: Uuid,
-    ) -> Result<(), sqlx::Error>;
+    async fn destroy(&self, user_id: Uuid, item_uid: Uuid) -> Result<(), sqlx::Error>;
 }
 
 pub struct InventoryServiceImpl<T: InventoryRepository> {
@@ -28,7 +24,9 @@ pub struct InventoryServiceImpl<T: InventoryRepository> {
 impl<R: InventoryRepository> InventoryServiceImpl<R> {
     // create a new function for InventoryServiceImpl.
     pub fn new(inventory_repository: R) -> Self {
-        Self { inventory_repository }
+        Self {
+            inventory_repository,
+        }
     }
 }
 
@@ -42,14 +40,12 @@ impl<R: InventoryRepository> InventoryService for InventoryServiceImpl<R> {
         definition_id: i32,
         state_blob: String,
     ) -> Result<(), sqlx::Error> {
-        self.inventory_repository.add_or_update(user_id, item_uuid, definition_id, state_blob).await
+        self.inventory_repository
+            .add_or_update(user_id, item_uuid, definition_id, state_blob)
+            .await
     }
 
-    async fn destroy(
-        &self,
-        user_id: Uuid,
-        item_uid: Uuid,
-    ) -> Result<(), sqlx::Error> {
+    async fn destroy(&self, user_id: Uuid, item_uid: Uuid) -> Result<(), sqlx::Error> {
         self.inventory_repository.destroy(user_id, item_uid).await
     }
 }

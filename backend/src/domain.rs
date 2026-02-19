@@ -42,7 +42,7 @@ pub struct SelectItemRequest {
 pub enum ItemType {
     Rod,
     Bait,
-    Extra
+    Extra,
 }
 
 // Struct to retreive user data
@@ -60,7 +60,7 @@ pub struct UserData {
     pub mailbox: Vec<MailEntry>,
     pub friends: Vec<Friend>,
     pub friend_requests: Vec<FriendRequest>,
-    pub active_effects: Vec<ActiveEffect>
+    pub active_effects: Vec<ActiveEffect>,
 }
 
 #[derive(Serialize, Debug, Deserialize)]

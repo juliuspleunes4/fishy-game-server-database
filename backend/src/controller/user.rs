@@ -27,7 +27,6 @@ struct ChangePasswordRequest {
     pub new_password: String,
 }
 
-
 /// Request body for requesting a players username.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 struct RetreiveUsernameRequest {
@@ -64,10 +63,10 @@ async fn create_user(
         .await
     {
         Ok(res) => Json(res),
-        Err(_) => Json(LoginResponse{
+        Err(_) => Json(LoginResponse {
             code: 401,
             jwt: String::from(""),
-        })
+        }),
     }
 }
 
@@ -89,14 +88,9 @@ async fn retreive_username(
     payload: Json<RetreiveUsernameRequest>,
     user_service: &State<Arc<dyn UserService>>,
 ) -> Json<bool> {
-    match user_service
-        .retreive_username(
-            payload.email.clone(),
-        )
-        .await
-    {
+    match user_service.retreive_username(payload.email.clone()).await {
         Ok(res) => Json(res),
-        Err(_) => Json(false)
+        Err(_) => Json(false),
     }
 }
 
@@ -118,12 +112,9 @@ async fn change_password(
     payload: Json<ChangePasswordRequest>,
     user_service: &State<Arc<dyn UserService>>,
 ) -> Json<bool> {
-    // TODO: We need a way to verify a user is actually changing the password of ut;s own account
+    // TODO: We need a way to verify a user is actually changing the password of it's own account
     match user_service
-        .change_password(
-            payload.username.clone(),
-            payload.new_password.clone(),
-        )
+        .change_password(payload.username.clone(), payload.new_password.clone())
         .await
     {
         Ok(res) => Json(res),

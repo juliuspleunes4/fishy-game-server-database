@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use rocket::async_trait;
 use sqlx::PgPool;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[async_trait]
@@ -9,9 +9,19 @@ pub trait FriendRepository: Send + Sync {
 
     async fn add_friend(&self, user_one: Uuid, user_two: Uuid) -> Result<(), sqlx::Error>;
 
-    async fn remove_friend_request(&self, original_sender: Uuid, original_receiver: Uuid) -> Result<(), sqlx::Error>;
+    async fn remove_friend_request(
+        &self,
+        original_sender: Uuid,
+        original_receiver: Uuid,
+    ) -> Result<(), sqlx::Error>;
 
-    async fn add_friend_request(&self, sender: Uuid, receiver: Uuid, sender_id: Uuid, request_created_time: DateTime<Utc>) -> Result<(), sqlx::Error>;
+    async fn add_friend_request(
+        &self,
+        sender: Uuid,
+        receiver: Uuid,
+        sender_id: Uuid,
+        request_created_time: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -36,7 +46,8 @@ impl FriendRepository for FriendRepositoryImpl {
             user_two_id,
         )
         .execute(&self.pool)
-        .await {
+        .await
+        {
             Ok(o) => o,
             Err(e) => {
                 dbg!(&e);
@@ -58,7 +69,8 @@ impl FriendRepository for FriendRepositoryImpl {
             user_two_id,
         )
         .execute(&self.pool)
-        .await {
+        .await
+        {
             Ok(o) => o,
             Err(e) => {
                 dbg!(&e);
@@ -73,7 +85,11 @@ impl FriendRepository for FriendRepositoryImpl {
         Ok(())
     }
 
-    async fn remove_friend_request(&self, user_one_id: Uuid, user_two_id: Uuid) -> Result<(), sqlx::Error> {
+    async fn remove_friend_request(
+        &self,
+        user_one_id: Uuid,
+        user_two_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
         let result = match sqlx::query!(
             "DELETE FROM friend_requests 
                 WHERE (user_one_id = $1 AND user_two_id = $2)
@@ -82,7 +98,8 @@ impl FriendRepository for FriendRepositoryImpl {
             user_two_id,
         )
         .execute(&self.pool)
-        .await {
+        .await
+        {
             Ok(o) => o,
             Err(e) => {
                 dbg!(&e);
@@ -97,7 +114,13 @@ impl FriendRepository for FriendRepositoryImpl {
         Ok(())
     }
 
-    async fn add_friend_request(&self, sender: Uuid, receiver: Uuid, sender_id: Uuid, request_created_time: DateTime<Utc>) -> Result<(), sqlx::Error> {
+    async fn add_friend_request(
+        &self,
+        sender: Uuid,
+        receiver: Uuid,
+        sender_id: Uuid,
+        request_created_time: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
         let result = match sqlx::query!(
             "INSERT INTO friend_requests (user_one_id, user_two_id, request_sender_id, request_created_time) VALUES ($1, $2, $3, $4)",
             sender,

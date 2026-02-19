@@ -17,9 +17,19 @@ pub trait MailService: Send + Sync {
 
     async fn delete(&self, user_id: Uuid, mail_id: Uuid) -> Result<(), sqlx::Error>;
 
-    async fn change_read_state(&self, user_id: Uuid, mail_id: Uuid, read: bool) -> Result<(), sqlx::Error>;
+    async fn change_read_state(
+        &self,
+        user_id: Uuid,
+        mail_id: Uuid,
+        read: bool,
+    ) -> Result<(), sqlx::Error>;
 
-    async fn change_archive_state(&self, user_id: Uuid, mail_id: Uuid, archived: bool) -> Result<(), sqlx::Error>;
+    async fn change_archive_state(
+        &self,
+        user_id: Uuid,
+        mail_id: Uuid,
+        archived: bool,
+    ) -> Result<(), sqlx::Error>;
 }
 
 pub struct MailServiceImpl<T: MailRepository> {
@@ -44,18 +54,32 @@ impl<R: MailRepository> MailService for MailServiceImpl<R> {
         title: String,
         message: String,
     ) -> Result<(), sqlx::Error> {
-        self.mail_repository.create(mail_id, sender_id, receiver_ids, title, message, Utc::now()).await
+        self.mail_repository
+            .create(mail_id, sender_id, receiver_ids, title, message, Utc::now())
+            .await
     }
 
     async fn delete(&self, user_id: Uuid, mail_id: Uuid) -> Result<(), sqlx::Error> {
         self.mail_repository.delete(user_id, mail_id).await
     }
 
-    async fn change_read_state(&self, user_id: Uuid, mail_id: Uuid, read: bool) -> Result<(), sqlx::Error> {
+    async fn change_read_state(
+        &self,
+        user_id: Uuid,
+        mail_id: Uuid,
+        read: bool,
+    ) -> Result<(), sqlx::Error> {
         self.mail_repository.read(user_id, mail_id, read).await
     }
 
-    async fn change_archive_state(&self, user_id: Uuid, mail_id: Uuid, archive: bool) -> Result<(), sqlx::Error> {
-        self.mail_repository.archive(user_id, mail_id, archive).await
+    async fn change_archive_state(
+        &self,
+        user_id: Uuid,
+        mail_id: Uuid,
+        archive: bool,
+    ) -> Result<(), sqlx::Error> {
+        self.mail_repository
+            .archive(user_id, mail_id, archive)
+            .await
     }
 }

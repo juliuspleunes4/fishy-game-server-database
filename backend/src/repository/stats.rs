@@ -14,7 +14,7 @@ pub trait StatsRepository: Send + Sync {
     async fn add_playtime(&self, user_id: Uuid, amount: i32) -> Result<(), sqlx::Error>;
 
     async fn add_fish(&self, fish: StatFish) -> Result<(), sqlx::Error>;
-    
+
     async fn select_rod(&self, user_id: Uuid, rod_uid: Uuid) -> Result<(), sqlx::Error>;
 
     async fn select_bait(&self, user_id: Uuid, bait_uid: Uuid) -> Result<(), sqlx::Error>;
@@ -164,12 +164,13 @@ impl StatsRepository for StatsRepositoryImpl {
             rod_uid,
         )
         .execute(&self.pool)
-        .await {
-                Ok(o) => o,
-                Err(e) => {
-                    dbg!(&e);
-                    return Err(e);
-                }
+        .await
+        {
+            Ok(o) => o,
+            Err(e) => {
+                dbg!(&e);
+                return Err(e);
+            }
         };
 
         if result.rows_affected() == 0 {
@@ -188,12 +189,13 @@ impl StatsRepository for StatsRepositoryImpl {
             bait_uid,
         )
         .execute(&self.pool)
-        .await {
-                Ok(o) => o,
-                Err(e) => {
-                    dbg!(&e);
-                    return Err(e);
-                }
+        .await
+        {
+            Ok(o) => o,
+            Err(e) => {
+                dbg!(&e);
+                return Err(e);
+            }
         };
 
         if result.rows_affected() == 0 {

@@ -19,7 +19,12 @@ pub trait MailRepository: Send + Sync {
 
     async fn read(&self, user_id: Uuid, mail_id: Uuid, read: bool) -> Result<(), sqlx::Error>;
 
-    async fn archive(&self, user_id: Uuid, mail_id: Uuid, archived: bool) -> Result<(), sqlx::Error>;
+    async fn archive(
+        &self,
+        user_id: Uuid,
+        mail_id: Uuid,
+        archived: bool,
+    ) -> Result<(), sqlx::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -55,7 +60,8 @@ impl MailRepository for MailRepositoryImpl {
             send_time,
         )
         .execute(&mut *tx)
-        .await {
+        .await
+        {
             dbg!(&e);
             return Err(e);
         }
@@ -70,7 +76,8 @@ impl MailRepository for MailRepositoryImpl {
                 false,
             )
             .execute(&mut *tx)
-            .await {
+            .await
+            {
                 dbg!(&e);
                 return Err(e);
             }
@@ -96,7 +103,8 @@ impl MailRepository for MailRepositoryImpl {
             mail_id,
         )
         .execute(&mut *tx)
-        .await {
+        .await
+        {
             dbg!(&e);
             return Err(e);
         }
@@ -111,7 +119,8 @@ impl MailRepository for MailRepositoryImpl {
             mail_id,
         )
         .execute(&mut *tx)
-        .await {
+        .await
+        {
             dbg!(&e);
             return Err(e);
         }
@@ -133,7 +142,8 @@ impl MailRepository for MailRepositoryImpl {
             read,
         )
         .execute(&self.pool)
-        .await {
+        .await
+        {
             Ok(o) => o,
             Err(e) => {
                 dbg!(&e);
@@ -148,7 +158,12 @@ impl MailRepository for MailRepositoryImpl {
         Ok(())
     }
 
-    async fn archive(&self, user_id: Uuid, mail_id: Uuid, archived: bool) -> Result<(), sqlx::Error> {
+    async fn archive(
+        &self,
+        user_id: Uuid,
+        mail_id: Uuid,
+        archived: bool,
+    ) -> Result<(), sqlx::Error> {
         let result = match sqlx::query!(
             "UPDATE mailbox SET archived = $3 WHERE user_id = $1 AND mail_id = $2",
             user_id,
@@ -156,7 +171,8 @@ impl MailRepository for MailRepositoryImpl {
             archived,
         )
         .execute(&self.pool)
-        .await {
+        .await
+        {
             Ok(o) => o,
             Err(e) => {
                 dbg!(&e);

@@ -1,17 +1,27 @@
 use crate::domain::User;
+use crate::entity::{inventory_item, stats, users};
+use chrono::FixedOffset;
 use rocket::async_trait;
+use sea_orm::ActiveValue::Set;
+use sea_orm::{ActiveModelTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, QuerySelect, TransactionError, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
 use sqlx::types::Uuid;
-use sqlx::PgPool;
 
 #[async_trait]
 pub trait UserRepository: Send + Sync {
-    async fn create(&self, user: User) -> Result<(), sqlx::Error>;
+    async fn create_new_user(&self, user: User) -> Result<(), DbErr>;
+
+    async fn insert_new_user(tx: &DatabaseTransaction, user: &User) -> Result<(), DbErr>;
+
+    async fn insert_default_stats(tx: &DatabaseTransaction, user_id: &Uuid) -> Result<(), DbErr>;
+
+    async fn insert_default_inventory(tx: &DatabaseTransaction, user_id: &Uuid) -> Result<(), DbErr>;
 
     async fn from_uuid(&self, user_id: Uuid) -> Result<Option<User>, sqlx::Error>;
 
-    async fn get_username_from_email(&self, email: String) -> Result<Option<Username>, sqlx::Error>;
+    async fn get_username_from_email(&self, email: String)
+        -> Result<Option<Username>, sqlx::Error>;
 
     async fn from_username(&self, email: String) -> Result<Option<User>, sqlx::Error>;
 
@@ -20,12 +30,12 @@ pub trait UserRepository: Send + Sync {
 
 #[derive(Debug, Clone)]
 pub struct UserRepositoryImpl {
-    pool: PgPool,
+    db: DatabaseConnection,
 }
 
 impl UserRepositoryImpl {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
     }
 }
 
@@ -36,143 +46,112 @@ pub struct Username {
 
 #[async_trait]
 impl UserRepository for UserRepositoryImpl {
-    async fn create(&self, user: User) -> Result<(), sqlx::Error> {
-        let mut tx = self.pool.begin().await?;
+    async fn create_new_user(&self, user: User) -> Result<(), DbErr> {
+        self.db.transaction::<_, (), DbErr>(|tx| {
+            Box::pin(async move {
+                Self::insert_new_user(tx, &user).await?;
+                Self::insert_default_stats(tx, &user.user_id).await?;
+                Self::insert_default_inventory(tx, &user.user_id).await?;
+                Ok(())
+            })
+        }).await.map_err(|e| match e {
+            TransactionError::Connection(e) => e,
+            TransactionError::Transaction(e) => e,
+        })
+    }
 
-        // Insert user
-        if let Err(e) = sqlx::query!(
-            "INSERT INTO users (user_id, name, email, password, salt, created)
-             VALUES ($1, $2, $3, $4, $5, $6)",
-            user.user_id,
-            user.name,
-            user.email,
-            user.password,
-            user.salt,
-            user.created
-        )
-        .execute(&mut *tx)
-        .await {
-            eprintln!("Error inserting user into database: {:?}", e);
-            return Err(e);
+    async fn insert_new_user(tx: &DatabaseTransaction, user: &User) -> Result<(), DbErr> {
+        let utc_offset = FixedOffset::east_opt(0)
+            .ok_or_else(|| DbErr::Custom("Invalid UTC offset".into()))?;
+
+        users::ActiveModel {
+            user_id: Set(user.user_id),
+            name: Set(user.name.clone()),
+            email: Set(user.email.clone()),
+            password: Set(user.password.clone()),
+            salt: Set(user.salt.clone()),
+            created: Set(user.created.with_timezone(&utc_offset)),
+        }.insert(tx).await?;
+        
+        Ok(())
+    }
+
+    async fn insert_default_stats(tx: &DatabaseTransaction, user_id: &Uuid) -> Result<(), DbErr> {
+        stats::ActiveModel {
+            user_id: Set(*user_id),
+            xp: Set(0),
+            coins: Set(25),
+            bucks: Set(5000),
+            total_playtime: Set(0),
+            ..Default::default()
+        }.insert(tx).await?;
+
+        Ok(())
+    }
+
+    async fn insert_default_inventory(tx: &DatabaseTransaction, user_id: &Uuid) -> Result<(), DbErr> {
+        let default_items = [
+            (1000, String::from("AQABAAX2////")), // bamboo rod
+            (0,    String::from("AQABAAX2////")), // hook
+        ];
+
+        for (definition_id, state_blob) in default_items {
+            inventory_item::ActiveModel {
+                user_id: Set(*user_id),
+                item_uuid: Set(Uuid::new_v4()),
+                definition_id: Set(definition_id),
+                state_blob: Set(state_blob),
+                ..Default::default()
+            }.insert(tx).await?;
         }
 
-        // Insert stats
-        let result = match sqlx::query!(
-            "INSERT INTO stats (user_id, xp, coins, bucks, total_playtime)
-            VALUES ($1, $2, $3, $4, $5);",
-            user.user_id,
-            0,    // xp
-            25,   // coins
-            5000, // bucks
-            0     // total_playtime
-        )
-        .execute(&mut *tx)
-        .await {
-            Ok(o) => o,
-            Err(e) => {
-                dbg!(&e);
-                return Err(e);
-            }
-        };
-
-        if result.rows_affected() == 0 {
-            return Err(sqlx::Error::RowNotFound);
-        }
-
-        // Insert bamboo rod
-        let result = match sqlx::query!(
-            "INSERT INTO inventory_item (user_id, item_uuid, definition_id, state_blob)
-            VALUES ($1, $2, $3, $4);",
-            user.user_id,     // user_id
-            Uuid::new_v4(),   // item_uid
-            1000,             // definition_id
-            "AQABAAX2////",   // state_blob
-        )
-        .execute(&mut *tx)
-        .await {
-            Ok(o) => o,
-            Err(e) => {
-                dbg!(&e);
-                return Err(e);
-            }
-        };
-
-        if result.rows_affected() == 0 {
-            return Err(sqlx::Error::RowNotFound);
-        }
-
-        // Insert hook
-        let result = match sqlx::query!(
-            "INSERT INTO inventory_item (user_id, item_uuid, definition_id, state_blob)
-            VALUES ($1, $2, $3, $4);",
-            user.user_id,     // user_id
-            Uuid::new_v4(),   // item_uid
-            0,                // definition_id
-            "AQABAAX2////",   // state_blob
-        )
-        .execute(&mut *tx)
-        .await {
-            Ok(o) => o,
-            Err(e) => {
-                dbg!(&e);
-                return Err(e);
-            }
-        };
-
-        if result.rows_affected() == 0 {
-            return Err(sqlx::Error::RowNotFound);
-        }
-
-        if let Err(e) = tx.commit().await {
-            dbg!(&e);
-            return Err(e);
-        };
         Ok(())
     }
 
     async fn from_uuid(&self, user_id: Uuid) -> Result<Option<User>, sqlx::Error> {
-        let user = sqlx::query_as!(
-            User,
-            "SELECT user_id, name, email, password, salt, created
-             FROM users
-             WHERE user_id = $1",
-            user_id
-        )
-        .fetch_optional(&self.pool)
-        .await?;
+        let model = users::Entity::find_by_id(user_id)
+            .one(&self.db)
+            .await
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
 
-        Ok(user)
+        Ok(model.map(|m| User {
+            user_id: m.user_id,
+            name: m.name,
+            email: m.email,
+            password: m.password,
+            salt: m.salt,
+            created: m.created.with_timezone(&chrono::Utc),
+        }))
     }
 
-    async fn get_username_from_email(&self, email: String) -> Result<Option<Username>, sqlx::Error> {
-        let user = match sqlx::query_as!(
-            Username,
-            "SELECT name
-             FROM users
-             WHERE email = $1",
-            email
-        )
-        .fetch_optional(&self.pool)
-        .await {
-            Ok(o) => o,
-            Err(e) => {
-                dbg!(&e);
-                return Err(e);
-            }
-        };
-        Ok(user)
+    async fn get_username_from_email(
+        &self,
+        email: String,
+    ) -> Result<Option<Username>, sqlx::Error> {
+        let model = users::Entity::find_by_email(&email)
+            .select_only()
+            .column(users::Column::Name)
+            .into_tuple::<String>()
+            .one(&self.db)
+            .await
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+        Ok(model.map(|name| Username { name }))
     }
 
-    async fn from_username(&self, email: String) -> Result<Option<User>, sqlx::Error> {
-        let user = sqlx::query_as!(
-            User,
-            "SELECT user_id, name, email, password, salt, created
-             FROM users
-             WHERE name = $1",
-            email
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(user)
+    async fn from_username(&self, username: String) -> Result<Option<User>, sqlx::Error> {
+        let model = users::Entity::find_by_name(&username)
+            .one(&self.db)
+            .await
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+        Ok(model.map(|m| User {
+            user_id: m.user_id,
+            name: m.name,
+            email: m.email,
+            password: m.password,
+            salt: m.salt,
+            created: m.created.with_timezone(&chrono::Utc),
+        }))
     }
 }

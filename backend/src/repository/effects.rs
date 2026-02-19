@@ -6,10 +6,15 @@ use uuid::Uuid;
 
 #[async_trait]
 pub trait EffectsRepository: Send + Sync {
-    async fn add_effect(&self, user_id: Uuid, item_id: i32, expiry_time: DateTime<Utc>) -> Result<(), sqlx::Error>;
+    async fn add_effect(
+        &self,
+        user_id: Uuid,
+        item_id: i32,
+        expiry_time: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error>;
 
     async fn remove_effect(&self, user_id: Uuid, item_id: i32) -> Result<(), sqlx::Error>;
-    
+
     async fn get_active_effects(&self, user_id: Uuid) -> Result<Vec<ActiveEffect>, sqlx::Error>;
 
     async fn remove_all_expired_effects_global(&self) -> Result<(), sqlx::Error>;
@@ -28,7 +33,12 @@ impl EffectsRepositoryImpl {
 
 #[async_trait]
 impl EffectsRepository for EffectsRepositoryImpl {
-    async fn add_effect(&self, user_id: Uuid, item_id: i32, expiry_time: DateTime<Utc>) -> Result<(), sqlx::Error> {
+    async fn add_effect(
+        &self,
+        user_id: Uuid,
+        item_id: i32,
+        expiry_time: DateTime<Utc>,
+    ) -> Result<(), sqlx::Error> {
         let result = sqlx::query!(
             "INSERT INTO player_effects (user_id, item_id, expiry_time)
             VALUES ($1, $2, $3)
@@ -57,7 +67,7 @@ impl EffectsRepository for EffectsRepositoryImpl {
         )
         .execute(&self.pool)
         .await?;
-    
+
         if result.rows_affected() == 0 {
             return Err(Error::RowNotFound);
         }
@@ -92,4 +102,4 @@ impl EffectsRepository for EffectsRepositoryImpl {
             dbg!(e);
         })
     }
-} 
+}

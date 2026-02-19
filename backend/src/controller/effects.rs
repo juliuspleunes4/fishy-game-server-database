@@ -26,7 +26,7 @@ pub struct RemoveExpiredEffectRequest {
 pub async fn add_effect(
     add_request: Json<AddActiveEffectRequest>,
     effects_service: &State<Arc<dyn EffectsService>>,
-) -> Json<bool>{
+) -> Json<bool> {
     match effects_service.add_effect(add_request.into_inner()).await {
         Ok(_) => Json(true),
         Err(e) => {
@@ -50,7 +50,10 @@ pub async fn remove_expired_effects(
     request: Json<RemoveExpiredEffectRequest>,
     effects_service: &State<Arc<dyn EffectsService>>,
 ) -> Json<bool> {
-    match effects_service.remove_effect(request.user_id, request.item_id).await {
+    match effects_service
+        .remove_effect(request.user_id, request.item_id)
+        .await
+    {
         Ok(_) => Json(true),
         Err(e) => {
             eprintln!("Error removing expired effects: {:?}", e);
@@ -86,4 +89,4 @@ pub fn routes() -> Vec<rocket::Route> {
         remove_expired_effects,
         cleanup_all_expired_effects
     ]
-} 
+}

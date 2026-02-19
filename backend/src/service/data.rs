@@ -15,9 +15,7 @@ pub struct DataServiceImpl<U: DataRepository> {
 
 impl<U: DataRepository> DataServiceImpl<U> {
     pub fn new(data_repository: U) -> Self {
-        Self {
-            data_repository,
-        }
+        Self { data_repository }
     }
 }
 

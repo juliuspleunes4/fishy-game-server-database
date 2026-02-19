@@ -29,7 +29,6 @@ struct HandleFriendRequest {
     pub request_accepted: bool,
 }
 
-
 #[utoipa::path(
     post,
     path = "/friend/remove_friend",
@@ -49,10 +48,7 @@ async fn remove_friend(
     friends_service: &State<Arc<dyn FriendService>>,
 ) -> Json<bool> {
     match friends_service
-        .remove_friend(
-            payload.user_one,
-            payload.user_two,
-        )
+        .remove_friend(payload.user_one, payload.user_two)
         .await
     {
         Ok(()) => Json(true),
@@ -79,18 +75,13 @@ async fn add_friend_request(
     friends_service: &State<Arc<dyn FriendService>>,
 ) -> Json<bool> {
     match friends_service
-        .add_friend_request(
-            payload.user_one,
-            payload.user_two,
-            payload.sender_id,
-        )
+        .add_friend_request(payload.user_one, payload.user_two, payload.sender_id)
         .await
     {
         Ok(()) => Json(true),
         Err(_) => Json(false),
     }
 }
-
 
 #[utoipa::path(
     post,
@@ -112,19 +103,15 @@ async fn handle_friend_request(
 ) -> Json<bool> {
     if payload.request_accepted == true {
         if friends_service
-            .add_friend(
-                payload.user_one,
-                payload.user_two,
-            )
-            .await.is_err() {
-            return Json(false)
+            .add_friend(payload.user_one, payload.user_two)
+            .await
+            .is_err()
+        {
+            return Json(false);
         }
     }
     match friends_service
-        .remove_friend_request(
-            payload.user_one,
-            payload.user_two,
-        )
+        .remove_friend_request(payload.user_one, payload.user_two)
         .await
     {
         Ok(()) => Json(true),

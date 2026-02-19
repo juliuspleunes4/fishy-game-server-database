@@ -11,7 +11,11 @@ use uuid::Uuid;
 #[async_trait]
 pub trait AuthenticationService: Send + Sync {
     /// Returns a JWT when credentials are valid.
-    async fn login(&self, username: String, password: String) -> Result<Option<LoginResponse>, sqlx::Error>;
+    async fn login(
+        &self,
+        username: String,
+        password: String,
+    ) -> Result<Option<LoginResponse>, sqlx::Error>;
 
     /// Checks if a JWT is valid given credentials.
     async fn verify_jwt(&self, token: &str) -> Result<Option<User>, sqlx::Error>;
@@ -37,7 +41,11 @@ impl<U: UserRepository> AuthenticationServiceImpl<U> {
 // Implement the authentication service trait for AuthenticationServiceImpl.
 #[async_trait]
 impl<U: UserRepository> AuthenticationService for AuthenticationServiceImpl<U> {
-    async fn login(&self, username: String, password: String) -> Result<Option<LoginResponse>, sqlx::Error> {
+    async fn login(
+        &self,
+        username: String,
+        password: String,
+    ) -> Result<Option<LoginResponse>, sqlx::Error> {
         let user = match self.user_repository.from_username(username).await? {
             Some(user) => user,
             None => {
@@ -45,12 +53,10 @@ impl<U: UserRepository> AuthenticationService for AuthenticationServiceImpl<U> {
             }
         };
         match verify_password(&password, &user.salt, &user.password) {
-            true => Ok(Some(
-                LoginResponse {
-                    code: 200,
-                    jwt: generate_jwt(user.user_id, &self.secret_key)?
-                }
-            )),
+            true => Ok(Some(LoginResponse {
+                code: 200,
+                jwt: generate_jwt(user.user_id, &self.secret_key)?,
+            })),
             false => Ok(None),
         }
     }

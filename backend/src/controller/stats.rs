@@ -1,4 +1,7 @@
-use crate::{domain::{SelectItemRequest, StatFish}, service::stats::StatsService};
+use crate::{
+    domain::{SelectItemRequest, StatFish},
+    service::stats::StatsService,
+};
 use rocket::{post, routes, serde::json::Json, State};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -206,13 +209,11 @@ async fn select_item(
     stats_service: &State<Arc<dyn StatsService>>,
 ) -> Json<bool> {
     match stats_service
-        .select_item(
-            SelectItemRequest {
-                user_id: payload.user_id,
-                item_uid: payload.item_uid,
-                item_type: payload.item_type,
-            }
-        )
+        .select_item(SelectItemRequest {
+            user_id: payload.user_id,
+            item_uid: payload.item_uid,
+            item_type: payload.item_type,
+        })
         .await
     {
         Ok(()) => Json(true),
@@ -222,5 +223,12 @@ async fn select_item(
 
 // Combine all the user routes.
 pub fn stats_routes() -> Vec<rocket::Route> {
-    routes![add_xp, change_bucks, change_coins, add_playtime, add_fish, select_item]
+    routes![
+        add_xp,
+        change_bucks,
+        change_coins,
+        add_playtime,
+        add_fish,
+        select_item
+    ]
 }
