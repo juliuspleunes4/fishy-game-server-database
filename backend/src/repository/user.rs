@@ -3,7 +3,10 @@ use crate::entity::{inventory_item, stats, users};
 use chrono::FixedOffset;
 use rocket::async_trait;
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ActiveModelTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, QuerySelect, TransactionError, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, QuerySelect,
+    TransactionError, TransactionTrait,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
 use sqlx::types::Uuid;
@@ -16,7 +19,10 @@ pub trait UserRepository: Send + Sync {
 
     async fn insert_default_stats(tx: &DatabaseTransaction, user_id: &Uuid) -> Result<(), DbErr>;
 
-    async fn insert_default_inventory(tx: &DatabaseTransaction, user_id: &Uuid) -> Result<(), DbErr>;
+    async fn insert_default_inventory(
+        tx: &DatabaseTransaction,
+        user_id: &Uuid,
+    ) -> Result<(), DbErr>;
 
     async fn from_uuid(&self, user_id: Uuid) -> Result<Option<User>, sqlx::Error>;
 
@@ -47,22 +53,25 @@ pub struct Username {
 #[async_trait]
 impl UserRepository for UserRepositoryImpl {
     async fn create_new_user(&self, user: User) -> Result<(), DbErr> {
-        self.db.transaction::<_, (), DbErr>(|tx| {
-            Box::pin(async move {
-                Self::insert_new_user(tx, &user).await?;
-                Self::insert_default_stats(tx, &user.user_id).await?;
-                Self::insert_default_inventory(tx, &user.user_id).await?;
-                Ok(())
+        self.db
+            .transaction::<_, (), DbErr>(|tx| {
+                Box::pin(async move {
+                    Self::insert_new_user(tx, &user).await?;
+                    Self::insert_default_stats(tx, &user.user_id).await?;
+                    Self::insert_default_inventory(tx, &user.user_id).await?;
+                    Ok(())
+                })
             })
-        }).await.map_err(|e| match e {
-            TransactionError::Connection(e) => e,
-            TransactionError::Transaction(e) => e,
-        })
+            .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 
     async fn insert_new_user(tx: &DatabaseTransaction, user: &User) -> Result<(), DbErr> {
-        let utc_offset = FixedOffset::east_opt(0)
-            .ok_or_else(|| DbErr::Custom("Invalid UTC offset".into()))?;
+        let utc_offset =
+            FixedOffset::east_opt(0).ok_or_else(|| DbErr::Custom("Invalid UTC offset".into()))?;
 
         users::ActiveModel {
             user_id: Set(user.user_id),
@@ -71,8 +80,10 @@ impl UserRepository for UserRepositoryImpl {
             password: Set(user.password.clone()),
             salt: Set(user.salt.clone()),
             created: Set(user.created.with_timezone(&utc_offset)),
-        }.insert(tx).await?;
-        
+        }
+        .insert(tx)
+        .await?;
+
         Ok(())
     }
 
@@ -84,15 +95,20 @@ impl UserRepository for UserRepositoryImpl {
             bucks: Set(5000),
             total_playtime: Set(0),
             ..Default::default()
-        }.insert(tx).await?;
+        }
+        .insert(tx)
+        .await?;
 
         Ok(())
     }
 
-    async fn insert_default_inventory(tx: &DatabaseTransaction, user_id: &Uuid) -> Result<(), DbErr> {
+    async fn insert_default_inventory(
+        tx: &DatabaseTransaction,
+        user_id: &Uuid,
+    ) -> Result<(), DbErr> {
         let default_items = [
             (1000, String::from("AQABAAX2////")), // bamboo rod
-            (0,    String::from("AQABAAX2////")), // hook
+            (0, String::from("AQABAAX2////")),    // hook
         ];
 
         for (definition_id, state_blob) in default_items {
@@ -102,7 +118,9 @@ impl UserRepository for UserRepositoryImpl {
                 definition_id: Set(definition_id),
                 state_blob: Set(state_blob),
                 ..Default::default()
-            }.insert(tx).await?;
+            }
+            .insert(tx)
+            .await?;
         }
 
         Ok(())
