@@ -1,5 +1,6 @@
 use chrono::Utc;
 use rocket::async_trait;
+use sea_orm::DbErr;
 use uuid::Uuid;
 
 use crate::repository::mail::MailRepository;
@@ -13,23 +14,23 @@ pub trait MailService: Send + Sync {
         receiver_ids: Vec<Uuid>,
         title: String,
         message: String,
-    ) -> Result<(), sqlx::Error>;
+    ) -> Result<(), DbErr>;
 
-    async fn delete(&self, user_id: Uuid, mail_id: Uuid) -> Result<(), sqlx::Error>;
+    async fn delete(&self, user_id: Uuid, mail_id: Uuid) -> Result<(), DbErr>;
 
     async fn change_read_state(
         &self,
         user_id: Uuid,
         mail_id: Uuid,
         read: bool,
-    ) -> Result<(), sqlx::Error>;
+    ) -> Result<(), DbErr>;
 
     async fn change_archive_state(
         &self,
         user_id: Uuid,
         mail_id: Uuid,
         archived: bool,
-    ) -> Result<(), sqlx::Error>;
+    ) -> Result<(), DbErr>;
 }
 
 pub struct MailServiceImpl<T: MailRepository> {
@@ -53,13 +54,13 @@ impl<R: MailRepository> MailService for MailServiceImpl<R> {
         receiver_ids: Vec<Uuid>,
         title: String,
         message: String,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), DbErr> {
         self.mail_repository
             .create(mail_id, sender_id, receiver_ids, title, message, Utc::now())
             .await
     }
 
-    async fn delete(&self, user_id: Uuid, mail_id: Uuid) -> Result<(), sqlx::Error> {
+    async fn delete(&self, user_id: Uuid, mail_id: Uuid) -> Result<(), DbErr> {
         self.mail_repository.delete(user_id, mail_id).await
     }
 
@@ -68,7 +69,7 @@ impl<R: MailRepository> MailService for MailServiceImpl<R> {
         user_id: Uuid,
         mail_id: Uuid,
         read: bool,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), DbErr> {
         self.mail_repository.read(user_id, mail_id, read).await
     }
 
@@ -77,7 +78,7 @@ impl<R: MailRepository> MailService for MailServiceImpl<R> {
         user_id: Uuid,
         mail_id: Uuid,
         archive: bool,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), DbErr> {
         self.mail_repository
             .archive(user_id, mail_id, archive)
             .await

@@ -1,6 +1,11 @@
 use rocket::async_trait;
-use sqlx::{Error, PgPool};
+use sea_orm::{
+    sea_query::OnConflict, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, DbErr,
+    EntityTrait, QueryFilter,
+};
 use uuid::Uuid;
+
+use crate::entity::inventory_item;
 
 #[async_trait]
 pub trait InventoryRepository: Send + Sync {
@@ -10,19 +15,19 @@ pub trait InventoryRepository: Send + Sync {
         item_uuid: Uuid,
         definition_id: i32,
         state_blob: String,
-    ) -> Result<(), sqlx::Error>;
+    ) -> Result<(), DbErr>;
 
-    async fn destroy(&self, user_id: Uuid, item_uid: Uuid) -> Result<(), sqlx::Error>;
+    async fn destroy(&self, user_id: Uuid, item_uid: Uuid) -> Result<(), DbErr>;
 }
 
 #[derive(Debug, Clone)]
 pub struct InventoryRepositoryImpl {
-    pool: PgPool,
+    db: DatabaseConnection,
 }
 
 impl InventoryRepositoryImpl {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
     }
 }
 
@@ -34,49 +39,37 @@ impl InventoryRepository for InventoryRepositoryImpl {
         item_uuid: Uuid,
         definition_id: i32,
         state_blob: String,
-    ) -> Result<(), sqlx::Error> {
-        match sqlx::query!(
-            "INSERT INTO inventory_item (user_id, item_uuid, definition_id, state_blob)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (item_uuid)
-            DO UPDATE SET
-                state_blob = EXCLUDED.state_blob",
-            user_id,
-            item_uuid,
-            definition_id,
-            state_blob,
+    ) -> Result<(), DbErr> {
+        inventory_item::Entity::insert(inventory_item::ActiveModel {
+            user_id: Set(user_id),
+            item_uuid: Set(item_uuid),
+            definition_id: Set(definition_id),
+            state_blob: Set(state_blob),
+        })
+        .on_conflict(
+            OnConflict::column(inventory_item::Column::ItemUuid)
+                .update_column(inventory_item::Column::StateBlob)
+                .to_owned(),
         )
-        .fetch_optional(&self.pool)
-        .await
-        {
-            Ok(o) => o,
-            Err(e) => {
-                dbg!(&e);
-                return Err(e);
-            }
-        };
+        .exec(&self.db)
+        .await?;
+
         Ok(())
     }
 
-    async fn destroy(&self, user_id: Uuid, item_uid: Uuid) -> Result<(), sqlx::Error> {
-        let result = match sqlx::query!(
-            "DELETE FROM inventory_item WHERE
-            user_id = $1 AND item_uuid = $2",
-            user_id,
-            item_uid,
-        )
-        .execute(&self.pool)
-        .await
-        {
-            Ok(o) => o,
-            Err(e) => {
-                dbg!(&e);
-                return Err(e);
-            }
-        };
+    async fn destroy(&self, user_id: Uuid, item_uid: Uuid) -> Result<(), DbErr> {
+        let result = inventory_item::Entity::delete_many()
+            .filter(
+                Condition::all()
+                    .add(inventory_item::Column::UserId.eq(user_id))
+                    .add(inventory_item::Column::ItemUuid.eq(item_uid))
+                    .to_owned(),
+            )
+            .exec(&self.db)
+            .await?;
 
-        if result.rows_affected() == 0 {
-            return Err(Error::RowNotFound);
+        if result.rows_affected == 0 {
+            return Err(DbErr::RecordNotUpdated);
         }
 
         Ok(())
