@@ -1,6 +1,5 @@
 use crate::domain::User;
 use crate::entity::{inventory_item, stats, users};
-use chrono::FixedOffset;
 use rocket::async_trait;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
@@ -70,16 +69,13 @@ impl UserRepository for UserRepositoryImpl {
     }
 
     async fn insert_new_user(tx: &DatabaseTransaction, user: &User) -> Result<(), DbErr> {
-        let utc_offset =
-            FixedOffset::east_opt(0).ok_or_else(|| DbErr::Custom("Invalid UTC offset".into()))?;
-
         users::ActiveModel {
             user_id: Set(user.user_id),
             name: Set(user.name.clone()),
             email: Set(user.email.clone()),
             password: Set(user.password.clone()),
             salt: Set(user.salt.clone()),
-            created: Set(user.created.with_timezone(&utc_offset)),
+            created: Set(user.created.fixed_offset()),
         }
         .insert(tx)
         .await?;

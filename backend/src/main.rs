@@ -134,7 +134,7 @@ async fn main() -> Result<(), rocket::Error> {
     let user_repository = UserRepositoryImpl::new(db.clone());
     let data_repository = DataRepositoryImpl::new(pool.clone());
     let effects_repository = EffectsRepositoryImpl::new(pool.clone());
-    let friends_repository = FriendRepositoryImpl::new(pool.clone());
+    let friends_repository = FriendRepositoryImpl::new(db.clone());
     let stats_repository = StatsRepositoryImpl::new(db.clone());
     let mail_repository = MailRepositoryImpl::new(db.clone());
     let inventory_repository = InventoryRepositoryImpl::new(db.clone());
