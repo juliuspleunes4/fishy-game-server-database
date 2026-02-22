@@ -133,7 +133,7 @@ async fn main() -> Result<(), rocket::Error> {
     // Build the repository layers and service layers.
     let user_repository = UserRepositoryImpl::new(db.clone());
     let data_repository = DataRepositoryImpl::new(pool.clone());
-    let effects_repository = EffectsRepositoryImpl::new(pool.clone());
+    let effects_repository = EffectsRepositoryImpl::new(db.clone());
     let friends_repository = FriendRepositoryImpl::new(db.clone());
     let stats_repository = StatsRepositoryImpl::new(db.clone());
     let mail_repository = MailRepositoryImpl::new(db.clone());

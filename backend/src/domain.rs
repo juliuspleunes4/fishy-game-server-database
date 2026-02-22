@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use sea_orm::FromQueryResult;
 use serde::Deserialize;
 use serde::Serialize;
 use sqlx::FromRow;
@@ -103,7 +104,7 @@ pub struct FriendRequest {
     pub request_sender_id: Uuid,
 }
 
-#[derive(Serialize, Debug, Deserialize, FromRow)]
+#[derive(Serialize, Debug, Deserialize, FromRow, FromQueryResult)]
 pub struct ActiveEffect {
     pub item_id: i32,
     pub expiry_time: DateTime<Utc>,

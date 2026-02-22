@@ -1,7 +1,10 @@
-use crate::domain::ActiveEffect;
+use crate::{domain::ActiveEffect, entity::player_effects};
 use chrono::{DateTime, Utc};
 use rocket::async_trait;
-use sqlx::{Error, PgPool};
+use sea_orm::{
+    prelude::Expr, sea_query::OnConflict, ActiveValue::Set, ColumnTrait, Condition,
+    DatabaseConnection, DbErr, EntityTrait, ExprTrait, QueryFilter, QueryOrder, QuerySelect,
+};
 use uuid::Uuid;
 
 #[async_trait]
@@ -11,23 +14,23 @@ pub trait EffectsRepository: Send + Sync {
         user_id: Uuid,
         item_id: i32,
         expiry_time: DateTime<Utc>,
-    ) -> Result<(), sqlx::Error>;
+    ) -> Result<(), DbErr>;
 
-    async fn remove_effect(&self, user_id: Uuid, item_id: i32) -> Result<(), sqlx::Error>;
+    async fn remove_effect(&self, user_id: Uuid, item_id: i32) -> Result<(), DbErr>;
 
-    async fn get_active_effects(&self, user_id: Uuid) -> Result<Vec<ActiveEffect>, sqlx::Error>;
+    async fn get_active_effects(&self, user_id: Uuid) -> Result<Vec<ActiveEffect>, DbErr>;
 
-    async fn remove_all_expired_effects_global(&self) -> Result<(), sqlx::Error>;
+    async fn remove_all_expired_effects_global(&self) -> Result<(), DbErr>;
 }
 
 #[derive(Debug, Clone)]
 pub struct EffectsRepositoryImpl {
-    pool: PgPool,
+    db: DatabaseConnection,
 }
 
 impl EffectsRepositoryImpl {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
     }
 }
 
@@ -38,68 +41,59 @@ impl EffectsRepository for EffectsRepositoryImpl {
         user_id: Uuid,
         item_id: i32,
         expiry_time: DateTime<Utc>,
-    ) -> Result<(), sqlx::Error> {
-        let result = sqlx::query!(
-            "INSERT INTO player_effects (user_id, item_id, expiry_time)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (user_id, item_id) 
-            DO UPDATE SET expiry_time = EXCLUDED.expiry_time",
-            user_id,
-            item_id,
-            expiry_time,
+    ) -> Result<(), DbErr> {
+        player_effects::Entity::insert(player_effects::ActiveModel {
+            user_id: Set(user_id),
+            item_id: Set(item_id),
+            expiry_time: Set(expiry_time.fixed_offset()),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                player_effects::Column::UserId,
+                player_effects::Column::ItemId,
+            ])
+            .update_column(player_effects::Column::ExpiryTime)
+            .to_owned(),
         )
-        .execute(&self.pool)
+        .exec(&self.db)
         .await?;
-
-        if result.rows_affected() == 0 {
-            return Err(Error::RowNotFound);
-        }
 
         Ok(())
     }
 
-    async fn remove_effect(&self, user_id: Uuid, item_id: i32) -> Result<(), sqlx::Error> {
-        let result = sqlx::query!(
-            "DELETE FROM player_effects
-            WHERE user_id = $1 AND item_id = $2",
-            user_id,
-            item_id,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        if result.rows_affected() == 0 {
-            return Err(Error::RowNotFound);
-        }
+    async fn remove_effect(&self, user_id: Uuid, item_id: i32) -> Result<(), DbErr> {
+        player_effects::Entity::delete_many()
+            .filter(
+                Condition::all()
+                    .add(player_effects::Column::UserId.eq(user_id))
+                    .add(player_effects::Column::ItemId.eq(item_id)),
+            )
+            .exec(&self.db)
+            .await?;
 
         Ok(())
     }
 
-    async fn get_active_effects(&self, user_id: Uuid) -> Result<Vec<ActiveEffect>, sqlx::Error> {
-        let effects = sqlx::query_as!(
-            ActiveEffect,
-            "SELECT item_id, expiry_time
-            FROM player_effects
-            WHERE user_id = $1 AND expiry_time > NOW()
-            ORDER BY expiry_time ASC",
-            user_id,
-        )
-        .fetch_all(&self.pool)
-        .await?;
+    async fn get_active_effects(&self, user_id: Uuid) -> Result<Vec<ActiveEffect>, DbErr> {
+        let effects = player_effects::Entity::find()
+            .select_only()
+            .column(player_effects::Column::ItemId)
+            .column(player_effects::Column::ExpiryTime)
+            .filter(player_effects::Column::UserId.eq(user_id))
+            .filter(player_effects::Column::ExpiryTime.gt(Utc::now()))
+            .order_by_asc(player_effects::Column::ExpiryTime)
+            .into_model::<ActiveEffect>()
+            .all(&self.db)
+            .await?;
 
         Ok(effects)
     }
 
-    async fn remove_all_expired_effects_global(&self) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            "DELETE FROM player_effects
-            WHERE expiry_time <= NOW()",
-        )
-        .execute(&self.pool)
-        .await
-        .map(|_| ())
-        .inspect_err(|e| {
-            dbg!(e);
-        })
+    async fn remove_all_expired_effects_global(&self) -> Result<(), DbErr> {
+        player_effects::Entity::delete_many()
+            .filter(Expr::col(player_effects::Column::ExpiryTime).lte(Expr::current_timestamp()))
+            .exec(&self.db)
+            .await?;
+        Ok(())
     }
 }

@@ -1,5 +1,6 @@
 use chrono::Utc;
 use rocket::async_trait;
+use sea_orm::DbErr;
 use uuid::Uuid;
 
 use crate::{
@@ -10,13 +11,13 @@ use crate::{
 // Here you add your business logic here.
 #[async_trait]
 pub trait EffectsService: Send + Sync {
-    async fn add_effect(&self, request: AddActiveEffectRequest) -> Result<(), sqlx::Error>;
+    async fn add_effect(&self, request: AddActiveEffectRequest) -> Result<(), DbErr>;
 
-    async fn remove_effect(&self, user_id: Uuid, item_id: i32) -> Result<(), sqlx::Error>;
+    async fn remove_effect(&self, user_id: Uuid, item_id: i32) -> Result<(), DbErr>;
 
-    async fn get_active_effects(&self, user_id: Uuid) -> Result<Vec<ActiveEffect>, sqlx::Error>;
+    async fn get_active_effects(&self, user_id: Uuid) -> Result<Vec<ActiveEffect>, DbErr>;
 
-    async fn cleanup_all_expired_effects(&self) -> Result<(), sqlx::Error>;
+    async fn cleanup_all_expired_effects(&self) -> Result<(), DbErr>;
 }
 
 pub struct EffectsServiceImpl<T: EffectsRepository> {
@@ -33,12 +34,10 @@ impl<R: EffectsRepository> EffectsServiceImpl<R> {
 // Implement EffectsService trait for EffectsServiceImpl.
 #[async_trait]
 impl<R: EffectsRepository> EffectsService for EffectsServiceImpl<R> {
-    async fn add_effect(&self, request: AddActiveEffectRequest) -> Result<(), sqlx::Error> {
+    async fn add_effect(&self, request: AddActiveEffectRequest) -> Result<(), DbErr> {
         // Validate that the expiry time is in the future
         if request.expiry_time <= Utc::now() {
-            return Err(sqlx::Error::Protocol(
-                "Expiry time must be in the future".into(),
-            ));
+            return Err(DbErr::Custom("Expiry time must be in the future".into()));
         }
 
         self.effects_repository
@@ -46,17 +45,17 @@ impl<R: EffectsRepository> EffectsService for EffectsServiceImpl<R> {
             .await
     }
 
-    async fn remove_effect(&self, user_id: Uuid, item_id: i32) -> Result<(), sqlx::Error> {
+    async fn remove_effect(&self, user_id: Uuid, item_id: i32) -> Result<(), DbErr> {
         self.effects_repository
             .remove_effect(user_id, item_id)
             .await
     }
 
-    async fn get_active_effects(&self, user_id: Uuid) -> Result<Vec<ActiveEffect>, sqlx::Error> {
+    async fn get_active_effects(&self, user_id: Uuid) -> Result<Vec<ActiveEffect>, DbErr> {
         self.effects_repository.get_active_effects(user_id).await
     }
 
-    async fn cleanup_all_expired_effects(&self) -> Result<(), sqlx::Error> {
+    async fn cleanup_all_expired_effects(&self) -> Result<(), DbErr> {
         self.effects_repository
             .remove_all_expired_effects_global()
             .await
