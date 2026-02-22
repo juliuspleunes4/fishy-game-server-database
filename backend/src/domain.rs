@@ -81,14 +81,15 @@ pub struct InventoryItem {
     pub state_blob: String,
 }
 
-#[derive(Serialize, Debug, Deserialize)]
+#[derive(Serialize, Debug, Deserialize, sea_orm::FromQueryResult)]
 pub struct MailEntry {
     pub mail_id: Uuid,
     pub title: String,
     pub message: String,
-    pub send_time: DateTime<Utc>,
+    pub send_time: chrono::DateTime<Utc>,
     pub read: bool,
     pub archived: bool,
+    pub sender_name: String,
 }
 
 #[derive(Serialize, Debug, Deserialize, sea_orm::FromQueryResult)]

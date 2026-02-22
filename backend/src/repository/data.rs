@@ -11,7 +11,7 @@ use sea_orm::prelude::Expr;
 use sea_orm::sea_query::Alias;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, ExprTrait,
-    JoinType, QueryFilter, QuerySelect, TransactionError, TransactionTrait,
+    JoinType, QueryFilter, QuerySelect, RelationTrait, TransactionError, TransactionTrait,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -111,23 +111,35 @@ impl DataRepositoryImpl {
         tx: &DatabaseTransaction,
         user_id: Uuid,
     ) -> Result<Vec<MailEntry>, DbErr> {
-        let entries = mailbox::Entity::find()
+        let sender = Alias::new("sender");
+
+        let rel_mail = mailbox::Relation::Mail.def();
+        let rel_sender = mail::Entity::belongs_to(users::Entity)
+            .from(mail::Column::SenderId)
+            .to(users::Column::UserId)
+            .into();
+
+        let rows = mailbox::Entity::find()
             .filter(mailbox::Column::UserId.eq(user_id))
-            .find_also_related(mail::Entity)
+            .join(JoinType::InnerJoin, rel_mail)
+            .join_as(JoinType::InnerJoin, rel_sender, sender.clone())
+            .select_only()
+            .column_as(mail::Column::MailId, "mail_id")
+            .column_as(mail::Column::Title, "title")
+            .column_as(mail::Column::Message, "message")
+            .column_as(mail::Column::SendTime, "send_time")
+            .column_as(mailbox::Column::Read, "read")
+            .column_as(mailbox::Column::Archived, "archived")
+            .expr_as(Expr::col((sender, users::Column::Name)), "sender_name")
+            .into_model::<MailEntry>()
             .all(tx)
             .await?;
 
-        Ok(entries
+        Ok(rows
             .into_iter()
-            .filter_map(|(mb, m)| {
-                m.map(|m| MailEntry {
-                    mail_id: m.mail_id,
-                    title: m.title,
-                    message: m.message,
-                    send_time: m.send_time.with_timezone(&Utc),
-                    read: mb.read,
-                    archived: mb.archived,
-                })
+            .map(|e| MailEntry {
+                send_time: e.send_time.with_timezone(&Utc),
+                ..e
             })
             .collect())
     }
