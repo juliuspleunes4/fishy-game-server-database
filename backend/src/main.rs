@@ -42,7 +42,6 @@ use service::mail::MailService;
 use service::mail::MailServiceImpl;
 use service::stats::StatsService;
 use service::stats::StatsServiceImpl;
-use sqlx::PgPool;
 use std::env;
 use std::sync::Arc;
 use utoipa::OpenApi;
@@ -114,7 +113,6 @@ async fn main() -> Result<(), rocket::Error> {
     let listening_ip = env::var("IP_ADDR").expect("Listening ip must be provided in the ENV");
 
     // Connect to postgres database.
-    let pool = PgPool::connect_lazy(&database_url).expect("Failed to connect to the database");
     let db = Database::connect(&database_url)
         .await
         .expect("Failed to create SeaORM database connection");
@@ -132,7 +130,7 @@ async fn main() -> Result<(), rocket::Error> {
 
     // Build the repository layers and service layers.
     let user_repository = UserRepositoryImpl::new(db.clone());
-    let data_repository = DataRepositoryImpl::new(pool.clone());
+    let data_repository = DataRepositoryImpl::new(db.clone());
     let effects_repository = EffectsRepositoryImpl::new(db.clone());
     let friends_repository = FriendRepositoryImpl::new(db.clone());
     let stats_repository = StatsRepositoryImpl::new(db.clone());

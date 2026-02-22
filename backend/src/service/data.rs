@@ -1,12 +1,12 @@
 use rocket::async_trait;
+use sea_orm::DbErr;
 use uuid::Uuid;
 
 use crate::{domain::UserData, repository::data::DataRepository};
 
-/// business logic for authorisation.
 #[async_trait]
 pub trait DataService: Send + Sync {
-    async fn retreive_all(&self, user_id: Uuid) -> Result<UserData, sqlx::Error>;
+    async fn retreive_all(&self, user_id: Uuid) -> Result<UserData, DbErr>;
 }
 
 pub struct DataServiceImpl<U: DataRepository> {
@@ -19,16 +19,12 @@ impl<U: DataRepository> DataServiceImpl<U> {
     }
 }
 
-// Implement the data service trait for DataServiceImpl.
 #[async_trait]
 impl<U: DataRepository> DataService for DataServiceImpl<U> {
-    async fn retreive_all(&self, user_id: Uuid) -> Result<UserData, sqlx::Error> {
-        let data = match self.data_repository.retreive_all(user_id).await? {
-            Some(user) => user,
-            None => {
-                return Err(sqlx::Error::WorkerCrashed);
-            }
-        };
-        Ok(data)
+    async fn retreive_all(&self, user_id: Uuid) -> Result<UserData, DbErr> {
+        match self.data_repository.retreive_all(user_id).await? {
+            Some(data) => Ok(data),
+            None => Err(DbErr::RecordNotFound("user data not found".into())),
+        }
     }
 }
