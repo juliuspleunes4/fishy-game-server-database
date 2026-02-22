@@ -22,12 +22,6 @@ pub trait StatsRepository: Send + Sync {
 
     async fn add_playtime(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr>;
 
-    async fn add_fish_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr>;
-
-    async fn add_fish_bait_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr>;
-
-    async fn add_fish_area_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr>;
-
     async fn add_fish(&self, fish: StatFish) -> Result<(), DbErr>;
 
     async fn select_rod(&self, user_id: Uuid, rod_uid: Uuid) -> Result<(), DbErr>;
@@ -43,6 +37,60 @@ pub struct StatsRepositoryImpl {
 impl StatsRepositoryImpl {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
+    }
+
+    async fn add_fish_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr> {
+        fish_caught::Entity::insert(fish_caught::ActiveModel {
+            user_id: Set(fish.user_id),
+            fish_id: Set(fish.fish_id),
+            amount: Set(1),
+            max_length: Set(fish.length),
+            first_caught: NotSet,
+        })
+        .on_conflict(
+            OnConflict::columns([fish_caught::Column::UserId, fish_caught::Column::FishId])
+                .update_columns([fish_caught::Column::Amount, fish_caught::Column::MaxLength])
+                .value(
+                    fish_caught::Column::Amount,
+                    Expr::col(fish_caught::Column::Amount).add(1),
+                )
+                .value(
+                    fish_caught::Column::MaxLength,
+                    Func::greatest([
+                        Expr::col(fish_caught::Column::MaxLength),
+                        Expr::col((Alias::new("excluded"), fish_caught::Column::MaxLength)),
+                    ]),
+                )
+                .to_owned(),
+        )
+        .exec(tx)
+        .await?;
+        Ok(())
+    }
+
+    async fn add_fish_bait_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr> {
+        fish_caught_bait::Entity::insert(fish_caught_bait::ActiveModel {
+            user_id: Set(fish.user_id),
+            fish_id: Set(fish.fish_id),
+            bait_id: Set(fish.bait_id),
+        })
+        .on_conflict(OnConflict::new().do_nothing().to_owned())
+        .exec(tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn add_fish_area_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr> {
+        fish_caught_area::Entity::insert(fish_caught_area::ActiveModel {
+            user_id: Set(fish.user_id),
+            fish_id: Set(fish.fish_id),
+            area_id: Set(fish.area_id),
+        })
+        .on_conflict(OnConflict::new().do_nothing().to_owned())
+        .exec(tx)
+        .await?;
+        Ok(())
     }
 }
 
@@ -110,60 +158,6 @@ impl StatsRepository for StatsRepositoryImpl {
             return Err(DbErr::RecordNotFound("stats->bucks".into()));
         }
 
-        Ok(())
-    }
-
-    async fn add_fish_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr> {
-        fish_caught::Entity::insert(fish_caught::ActiveModel {
-            user_id: Set(fish.user_id),
-            fish_id: Set(fish.fish_id),
-            amount: Set(1),
-            max_length: Set(fish.length),
-            first_caught: NotSet,
-        })
-        .on_conflict(
-            OnConflict::columns([fish_caught::Column::UserId, fish_caught::Column::FishId])
-                .update_columns([fish_caught::Column::Amount, fish_caught::Column::MaxLength])
-                .value(
-                    fish_caught::Column::Amount,
-                    Expr::col(fish_caught::Column::Amount).add(1),
-                )
-                .value(
-                    fish_caught::Column::MaxLength,
-                    Func::greatest([
-                        Expr::col(fish_caught::Column::MaxLength),
-                        Expr::col((Alias::new("excluded"), fish_caught::Column::MaxLength)),
-                    ]),
-                )
-                .to_owned(),
-        )
-        .exec(tx)
-        .await?;
-        Ok(())
-    }
-
-    async fn add_fish_bait_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr> {
-        fish_caught_bait::Entity::insert(fish_caught_bait::ActiveModel {
-            user_id: Set(fish.user_id),
-            fish_id: Set(fish.fish_id),
-            bait_id: Set(fish.bait_id),
-        })
-        .on_conflict(OnConflict::new().do_nothing().to_owned())
-        .exec(tx)
-        .await?;
-
-        Ok(())
-    }
-
-    async fn add_fish_area_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr> {
-        fish_caught_area::Entity::insert(fish_caught_area::ActiveModel {
-            user_id: Set(fish.user_id),
-            fish_id: Set(fish.fish_id),
-            area_id: Set(fish.area_id),
-        })
-        .on_conflict(OnConflict::new().do_nothing().to_owned())
-        .exec(tx)
-        .await?;
         Ok(())
     }
 

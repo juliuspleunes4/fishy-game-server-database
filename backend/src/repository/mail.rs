@@ -10,21 +10,6 @@ use uuid::Uuid;
 
 #[async_trait]
 pub trait MailRepository: Send + Sync {
-    async fn insert_mail(
-        tx: &DatabaseTransaction,
-        mail_id: Uuid,
-        sender_id: Uuid,
-        tilte: String,
-        message: String,
-        send_time: DateTime<Utc>,
-    ) -> Result<(), DbErr>;
-
-    async fn insert_into_mailbox(
-        tx: &DatabaseTransaction,
-        user_id: Uuid,
-        mail_id: Uuid,
-    ) -> Result<(), DbErr>;
-
     async fn create(
         &self,
         mail_id: Uuid,
@@ -34,14 +19,6 @@ pub trait MailRepository: Send + Sync {
         message: String,
         send_time: DateTime<Utc>,
     ) -> Result<(), DbErr>;
-
-    async fn delete_mail_mailbox(
-        tx: &DatabaseTransaction,
-        user_id: Uuid,
-        mail_id: Uuid,
-    ) -> Result<(), DbErr>;
-
-    async fn delete_mail(tx: &DatabaseTransaction, mail_id: Uuid) -> Result<(), DbErr>;
 
     async fn delete(&self, user_id: Uuid, mail_id: Uuid) -> Result<(), DbErr>;
 
@@ -59,10 +36,7 @@ impl MailRepositoryImpl {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
-}
 
-#[async_trait]
-impl MailRepository for MailRepositoryImpl {
     async fn insert_mail(
         tx: &DatabaseTransaction,
         mail_id: Uuid,
@@ -103,32 +77,6 @@ impl MailRepository for MailRepositoryImpl {
         Ok(())
     }
 
-    async fn create(
-        &self,
-        mail_id: Uuid,
-        sender_id: Uuid,
-        receiver_ids: Vec<Uuid>,
-        title: String,
-        message: String,
-        send_time: DateTime<Utc>,
-    ) -> Result<(), DbErr> {
-        self.db
-            .transaction::<_, (), DbErr>(|tx| {
-                Box::pin(async move {
-                    Self::insert_mail(tx, mail_id, sender_id, title, message, send_time).await?;
-                    for receiver in receiver_ids {
-                        Self::insert_into_mailbox(tx, receiver, mail_id).await?;
-                    }
-                    Ok(())
-                })
-            })
-            .await
-            .map_err(|e| match e {
-                TransactionError::Connection(e) => e,
-                TransactionError::Transaction(e) => e,
-            })
-    }
-
     async fn delete_mail_mailbox(
         tx: &DatabaseTransaction,
         user_id: Uuid,
@@ -162,6 +110,35 @@ impl MailRepository for MailRepositoryImpl {
             .await?;
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl MailRepository for MailRepositoryImpl {
+    async fn create(
+        &self,
+        mail_id: Uuid,
+        sender_id: Uuid,
+        receiver_ids: Vec<Uuid>,
+        title: String,
+        message: String,
+        send_time: DateTime<Utc>,
+    ) -> Result<(), DbErr> {
+        self.db
+            .transaction::<_, (), DbErr>(|tx| {
+                Box::pin(async move {
+                    Self::insert_mail(tx, mail_id, sender_id, title, message, send_time).await?;
+                    for receiver in receiver_ids {
+                        Self::insert_into_mailbox(tx, receiver, mail_id).await?;
+                    }
+                    Ok(())
+                })
+            })
+            .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 
     async fn delete(&self, user_id: Uuid, mail_id: Uuid) -> Result<(), DbErr> {
