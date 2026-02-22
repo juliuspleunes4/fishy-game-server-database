@@ -7,9 +7,11 @@ use crate::entity::{
 };
 use chrono::Utc;
 use rocket::async_trait;
+use sea_orm::prelude::Expr;
+use sea_orm::sea_query::Alias;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, ExprTrait,
-    QueryFilter, TransactionError, TransactionTrait,
+    JoinType, QueryFilter, QuerySelect, TransactionError, TransactionTrait,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -131,45 +133,98 @@ impl DataRepositoryImpl {
     }
 
     async fn fetch_friends(tx: &DatabaseTransaction, user_id: Uuid) -> Result<Vec<Friend>, DbErr> {
-        let rows = friends::Entity::find()
+        let u1 = Alias::new("u1");
+        let u2 = Alias::new("u2");
+
+        let rel_user_one = friends::Entity::belongs_to(users::Entity)
+            .from(friends::Column::UserOneId)
+            .to(users::Column::UserId)
+            .into();
+
+        let rel_user_two = friends::Entity::belongs_to(users::Entity)
+            .from(friends::Column::UserTwoId)
+            .to(users::Column::UserId)
+            .into();
+
+        friends::Entity::find()
             .filter(
                 Condition::any()
                     .add(friends::Column::UserOneId.eq(user_id))
                     .add(friends::Column::UserTwoId.eq(user_id)),
             )
+            .join_as(JoinType::InnerJoin, rel_user_one, u1.clone())
+            .join_as(JoinType::InnerJoin, rel_user_two, u2.clone())
+            .select_only()
+            .expr_as(
+                Expr::case(
+                    Expr::col(friends::Column::UserOneId).eq(user_id),
+                    Expr::col(friends::Column::UserTwoId),
+                )
+                .finally(Expr::col(friends::Column::UserOneId)),
+                "friend_id",
+            )
+            .expr_as(
+                Expr::case(
+                    Expr::col(friends::Column::UserOneId).eq(user_id),
+                    Expr::col((u2, users::Column::Name)),
+                )
+                .finally(Expr::col((u1, users::Column::Name))),
+                "friend_name",
+            )
+            .into_model::<Friend>()
             .all(tx)
-            .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|f| Friend {
-                user_one: f.user_one_id,
-                user_two: f.user_two_id,
-            })
-            .collect())
+            .await
     }
 
     async fn fetch_friend_requests(
         tx: &DatabaseTransaction,
         user_id: Uuid,
     ) -> Result<Vec<FriendRequest>, DbErr> {
-        let rows = friend_requests::Entity::find()
+        let u1 = Alias::new("u1");
+        let u2 = Alias::new("u2");
+
+        let rel_user_one = friend_requests::Entity::belongs_to(users::Entity)
+            .from(friend_requests::Column::UserOneId)
+            .to(users::Column::UserId)
+            .into();
+
+        let rel_user_two = friend_requests::Entity::belongs_to(users::Entity)
+            .from(friend_requests::Column::UserTwoId)
+            .to(users::Column::UserId)
+            .into();
+
+        friend_requests::Entity::find()
             .filter(
                 Condition::any()
                     .add(friend_requests::Column::UserOneId.eq(user_id))
                     .add(friend_requests::Column::UserTwoId.eq(user_id)),
             )
+            .join_as(JoinType::InnerJoin, rel_user_one, u1.clone())
+            .join_as(JoinType::InnerJoin, rel_user_two, u2.clone())
+            .select_only()
+            .expr_as(
+                Expr::case(
+                    Expr::col(friend_requests::Column::UserOneId).eq(user_id),
+                    Expr::col(friend_requests::Column::UserTwoId),
+                )
+                .finally(Expr::col(friend_requests::Column::UserOneId)),
+                "other_id",
+            )
+            .expr_as(
+                Expr::case(
+                    Expr::col(friend_requests::Column::UserOneId).eq(user_id),
+                    Expr::col((u2, users::Column::Name)),
+                )
+                .finally(Expr::col((u1, users::Column::Name))),
+                "other_name",
+            )
+            .expr_as(
+                Expr::col(friend_requests::Column::RequestSenderId),
+                "request_sender_id",
+            )
+            .into_model::<FriendRequest>()
             .all(tx)
-            .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| FriendRequest {
-                user_one: r.user_one_id,
-                user_two: r.user_two_id,
-                request_sender_id: r.request_sender_id,
-            })
-            .collect())
+            .await
     }
 
     async fn fetch_active_effects(

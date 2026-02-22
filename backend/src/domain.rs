@@ -91,16 +91,16 @@ pub struct MailEntry {
     pub archived: bool,
 }
 
-#[derive(Serialize, Debug, Deserialize)]
+#[derive(Serialize, Debug, Deserialize, sea_orm::FromQueryResult)]
 pub struct Friend {
-    pub user_one: Uuid,
-    pub user_two: Uuid,
+    pub friend_id: Uuid,
+    pub friend_name: String,
 }
 
-#[derive(Serialize, Debug, Deserialize)]
+#[derive(Serialize, Debug, Deserialize, sea_orm::FromQueryResult)]
 pub struct FriendRequest {
-    pub user_one: Uuid,
-    pub user_two: Uuid,
+    pub other_id: Uuid,
+    pub other_name: String,
     pub request_sender_id: Uuid,
 }
 
