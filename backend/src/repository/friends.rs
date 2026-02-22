@@ -89,13 +89,13 @@ impl FriendRepository for FriendRepositoryImpl {
                 Condition::any()
                     .add(
                         Condition::all()
-                            .add(friends::Column::UserOneId.eq(user_one_id))
-                            .add(friends::Column::UserTwoId.eq(user_two_id)),
+                            .add(friend_requests::Column::UserOneId.eq(user_one_id))
+                            .add(friend_requests::Column::UserTwoId.eq(user_two_id)),
                     )
                     .add(
                         Condition::all()
-                            .add(friends::Column::UserOneId.eq(user_two_id))
-                            .add(friends::Column::UserTwoId.eq(user_one_id)),
+                            .add(friend_requests::Column::UserOneId.eq(user_two_id))
+                            .add(friend_requests::Column::UserTwoId.eq(user_one_id)),
                     )
                     .to_owned(),
             )
