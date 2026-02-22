@@ -1,6 +1,11 @@
 # ------ build stage
 FROM rust:1.89-slim AS builder
 
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy and build the dependicies first, optimisation thing
@@ -16,7 +21,7 @@ RUN cargo build --release
 FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y \
-    libssl-dev ca-certificates binutils && \
+    libssl3 ca-certificates binutils && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
