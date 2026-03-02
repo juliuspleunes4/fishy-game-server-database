@@ -5,5 +5,6 @@ pub mod effects;
 pub mod friends;
 pub mod inventory;
 pub mod mail;
+pub mod shop;
 pub mod stats;
 pub mod user;

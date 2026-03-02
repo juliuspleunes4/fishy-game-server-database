@@ -1,7 +1,4 @@
-use crate::{
-    domain::StatFish,
-    entity::{fish_caught, fish_caught_area, fish_caught_bait, stats},
-};
+use crate::{domain::StatFish, entity::{fish_caught, fish_caught_area, fish_caught_bait, stats}};
 use rocket::async_trait;
 use sea_orm::{
     prelude::Expr,
@@ -19,6 +16,21 @@ pub trait StatsRepository: Send + Sync {
     async fn change_bucks(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr>;
 
     async fn change_coins(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr>;
+
+    /// Transactional variants for use inside an existing `DatabaseTransaction`.
+    async fn change_bucks_tx(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        amount: i32,
+    ) -> Result<(), DbErr>;
+
+    async fn change_coins_tx(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        amount: i32,
+    ) -> Result<(), DbErr>;
 
     async fn add_playtime(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr>;
 
@@ -135,6 +147,50 @@ impl StatsRepository for StatsRepositoryImpl {
             )
             .filter(stats::Column::UserId.eq(user_id))
             .exec(&self.db)
+            .await?;
+
+        if result.rows_affected == 0 {
+            return Err(DbErr::RecordNotFound("stats->bucks".into()));
+        }
+
+        Ok(())
+    }
+
+    async fn change_bucks_tx(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        amount: i32,
+    ) -> Result<(), DbErr> {
+        let result = stats::Entity::update_many()
+            .col_expr(
+                stats::Column::Bucks,
+                Expr::col(stats::Column::Bucks).add(amount),
+            )
+            .filter(stats::Column::UserId.eq(user_id))
+            .exec(tx)
+            .await?;
+
+        if result.rows_affected == 0 {
+            return Err(DbErr::RecordNotFound("stats->bucks".into()));
+        }
+
+        Ok(())
+    }
+
+    async fn change_coins_tx(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        amount: i32,
+    ) -> Result<(), DbErr> {
+        let result = stats::Entity::update_many()
+            .col_expr(
+                stats::Column::Coins,
+                Expr::col(stats::Column::Coins).add(amount),
+            )
+            .filter(stats::Column::UserId.eq(user_id))
+            .exec(tx)
             .await?;
 
         if result.rows_affected == 0 {
