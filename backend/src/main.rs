@@ -135,7 +135,7 @@ async fn main() -> Result<(), rocket::Error> {
     let friends_repository = FriendRepositoryImpl::new();
     let stats_repository = StatsRepositoryImpl::new(db.clone());
     let mail_repository = MailRepositoryImpl::new(db.clone());
-    let inventory_repository = InventoryRepositoryImpl::new(db.clone());
+    let inventory_repository = InventoryRepositoryImpl::new();
 
     let user_service: Arc<dyn UserService> = Arc::new(UserServiceImpl::new(
         user_repository.clone(),
@@ -160,8 +160,10 @@ async fn main() -> Result<(), rocket::Error> {
     let mail_service: Arc<dyn MailService> =
         Arc::new(MailServiceImpl::new(mail_repository.clone()));
 
-    let inventory_service: Arc<dyn InventoryService> =
-        Arc::new(InventoryServiceImpl::new(inventory_repository.clone()));
+    let inventory_service: Arc<dyn InventoryService> = Arc::new(InventoryServiceImpl::new(
+        db.clone(),
+        inventory_repository.clone(),
+    ));
 
     let effects_service: Arc<dyn EffectsService> =
         Arc::new(EffectsServiceImpl::new(effects_repository.clone()));

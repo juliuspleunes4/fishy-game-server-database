@@ -1,5 +1,5 @@
 use rocket::async_trait;
-use sea_orm::DbErr;
+use sea_orm::{DatabaseConnection, DbErr, TransactionError, TransactionTrait};
 use uuid::Uuid;
 
 use crate::repository::inventory::InventoryRepository;
@@ -7,11 +7,11 @@ use crate::repository::inventory::InventoryRepository;
 // Here you add your business logic here.
 #[async_trait]
 pub trait InventoryService: Send + Sync {
-    async fn add_or_update(
+    async fn use_item(
         &self,
-        user_id: Uuid,
+        user_uuid: Uuid,
         item_uuid: Uuid,
-        definition_id: i32,
+        item_def_id: i32,
         state_blob: String,
     ) -> Result<(), DbErr>;
 
@@ -19,13 +19,15 @@ pub trait InventoryService: Send + Sync {
 }
 
 pub struct InventoryServiceImpl<T: InventoryRepository> {
+    db: DatabaseConnection,
     inventory_repository: T,
 }
 
-impl<R: InventoryRepository> InventoryServiceImpl<R> {
+impl<R: InventoryRepository + Clone> InventoryServiceImpl<R> {
     // create a new function for InventoryServiceImpl.
-    pub fn new(inventory_repository: R) -> Self {
+    pub fn new(db: DatabaseConnection, inventory_repository: R) -> Self {
         Self {
+            db,
             inventory_repository,
         }
     }
@@ -33,20 +35,48 @@ impl<R: InventoryRepository> InventoryServiceImpl<R> {
 
 // Implement InventoryService trait for InventoryServiceImpl.
 #[async_trait]
-impl<R: InventoryRepository> InventoryService for InventoryServiceImpl<R> {
-    async fn add_or_update(
+impl<R: InventoryRepository + Clone + 'static> InventoryService for InventoryServiceImpl<R> {
+    async fn use_item(
         &self,
-        user_id: Uuid,
+        user_uuid: Uuid,
         item_uuid: Uuid,
-        definition_id: i32,
+        item_def_id: i32,
         state_blob: String,
     ) -> Result<(), DbErr> {
-        self.inventory_repository
-            .add_or_update(user_id, item_uuid, definition_id, state_blob)
+        let inv_repo = self.inventory_repository.clone();
+
+        self.db
+            .transaction::<_, (), DbErr>(move |tx| {
+                Box::pin(async move {
+                    inv_repo
+                        .add_or_update_tx(tx, user_uuid, item_uuid, item_def_id, state_blob)
+                        .await?;
+
+                    Ok(())
+                })
+            })
             .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 
     async fn destroy(&self, user_id: Uuid, item_uid: Uuid) -> Result<(), DbErr> {
-        self.inventory_repository.destroy(user_id, item_uid).await
+        let inv_repo = self.inventory_repository.clone();
+
+        self.db
+            .transaction::<_, (), DbErr>(move |tx| {
+                Box::pin(async move {
+                    inv_repo.destroy(tx, user_id, item_uid).await?;
+
+                    Ok(())
+                })
+            })
+            .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 }
