@@ -39,8 +39,8 @@ impl<R: StatsRepository + Clone, T: InventoryRepository + Clone> ShopServiceImpl
 
 // Implement StatsService trait for ShopServiceImpl.
 #[async_trait]
-impl<R: StatsRepository + Clone + 'static, T: InventoryRepository + Clone + 'static>
-    ShopService for ShopServiceImpl<R, T>
+impl<R: StatsRepository + Clone + 'static, T: InventoryRepository + Clone + 'static> ShopService
+    for ShopServiceImpl<R, T>
 {
     async fn buy_item(
         &self,

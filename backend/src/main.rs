@@ -132,7 +132,7 @@ async fn main() -> Result<(), rocket::Error> {
     let user_repository = UserRepositoryImpl::new(db.clone());
     let data_repository = DataRepositoryImpl::new(db.clone());
     let effects_repository = EffectsRepositoryImpl::new(db.clone());
-    let friends_repository = FriendRepositoryImpl::new(db.clone());
+    let friends_repository = FriendRepositoryImpl::new();
     let stats_repository = StatsRepositoryImpl::new(db.clone());
     let mail_repository = MailRepositoryImpl::new(db.clone());
     let inventory_repository = InventoryRepositoryImpl::new(db.clone());
@@ -149,8 +149,10 @@ async fn main() -> Result<(), rocket::Error> {
     let data_service: Arc<dyn DataService> =
         Arc::new(DataServiceImpl::new(data_repository.clone()));
 
-    let friend_service: Arc<dyn FriendService> =
-        Arc::new(FriendServiceImpl::new(friends_repository.clone()));
+    let friend_service: Arc<dyn FriendService> = Arc::new(FriendServiceImpl::new(
+        db.clone(),
+        friends_repository.clone(),
+    ));
 
     let stats_service: Arc<dyn StatsService> =
         Arc::new(StatsServiceImpl::new(stats_repository.clone()));

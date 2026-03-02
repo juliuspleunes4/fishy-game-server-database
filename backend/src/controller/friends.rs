@@ -101,17 +101,8 @@ async fn handle_friend_request(
     payload: Json<HandleFriendRequest>,
     friends_service: &State<Arc<dyn FriendService>>,
 ) -> Json<bool> {
-    if payload.request_accepted == true {
-        if friends_service
-            .add_friend(payload.user_one, payload.user_two)
-            .await
-            .is_err()
-        {
-            return Json(false);
-        }
-    }
     match friends_service
-        .remove_friend_request(payload.user_one, payload.user_two)
+        .handle_friend_request(payload.user_one, payload.user_two, payload.request_accepted)
         .await
     {
         Ok(()) => Json(true),

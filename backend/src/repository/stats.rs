@@ -1,4 +1,7 @@
-use crate::{domain::StatFish, entity::{fish_caught, fish_caught_area, fish_caught_bait, stats}};
+use crate::{
+    domain::StatFish,
+    entity::{fish_caught, fish_caught_area, fish_caught_bait, stats},
+};
 use rocket::async_trait;
 use sea_orm::{
     prelude::Expr,
