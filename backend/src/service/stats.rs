@@ -13,7 +13,7 @@ pub trait StatsService: Send + Sync {
 
     async fn add_playtime(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr>;
 
-    async fn add_fish(&self, fish: StatFish) -> Result<(), DbErr>;
+    async fn add_fish(&self, user_caught: Uuid, fish: StatFish, xp_earned: i32) -> Result<(), DbErr>;
 
     async fn select_item(&self, select_item: SelectItemRequest) -> Result<(), DbErr>;
 }
@@ -61,12 +61,15 @@ impl<R: StatsRepository + Clone + 'static> StatsService for StatsServiceImpl<R> 
             })
     }
 
-    async fn add_fish(&self, fish: StatFish) -> Result<(), DbErr> {
+    async fn add_fish(&self, user_caught: Uuid, fish: StatFish, xp_earned: i32) -> Result<(), DbErr> {
         let stats_repo = self.stats_repository.clone();
 
         self.db
             .transaction::<_, (), DbErr>(move |tx| {
-                Box::pin(async move { stats_repo.add_fish_tx(tx, fish).await })
+                Box::pin(async move {
+                    stats_repo.add_fish_tx(tx, user_caught, fish).await?;
+                    stats_repo.add_xp(tx, user_caught, xp_earned as i32).await
+                })
             })
             .await
             .map_err(|e| match e {

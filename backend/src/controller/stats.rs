@@ -23,6 +23,7 @@ struct AddFishRequest {
     pub fish_id: i32,
     pub bait_id: i32,
     pub area_id: i32,
+    pub xp_earned: i32,
 }
 
 #[utoipa::path(
@@ -74,13 +75,12 @@ async fn add_fish(
     stats_service: &State<Arc<dyn StatsService>>,
 ) -> Json<bool> {
     match stats_service
-        .add_fish(StatFish {
-            user_id: payload.user_id,
+        .add_fish(payload.user_id, StatFish {
             fish_id: payload.fish_id,
             length: payload.length,
             bait_id: payload.bait_id,
             area_id: payload.area_id,
-        })
+        }, payload.xp_earned)
         .await
     {
         Ok(()) => Json(true),

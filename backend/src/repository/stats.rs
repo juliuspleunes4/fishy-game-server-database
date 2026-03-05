@@ -59,6 +59,7 @@ pub trait StatsRepository: Send + Sync {
     async fn add_fish_tx(
         &self,
         tx: &DatabaseTransaction,
+        user_caught: Uuid,
         fish: StatFish,
     ) -> Result<(), DbErr>;
 
@@ -93,9 +94,9 @@ impl StatsRepositoryImpl {
         Self
     }
 
-    async fn add_fish_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr> {
+    async fn add_fish_caught(tx: &DatabaseTransaction, user_caught: Uuid, fish: &StatFish) -> Result<(), DbErr> {
         fish_caught::Entity::insert(fish_caught::ActiveModel {
-            user_id: Set(fish.user_id),
+            user_id: Set(user_caught),
             fish_id: Set(fish.fish_id),
             amount: Set(1),
             max_length: Set(fish.length),
@@ -124,10 +125,11 @@ impl StatsRepositoryImpl {
 
     async fn add_fish_bait_caught(
         tx: &DatabaseTransaction,
+        user_caught: Uuid,
         fish: &StatFish,
     ) -> Result<(), DbErr> {
         fish_caught_bait::Entity::insert(fish_caught_bait::ActiveModel {
-            user_id: Set(fish.user_id),
+            user_id: Set(user_caught),
             fish_id: Set(fish.fish_id),
             bait_id: Set(fish.bait_id),
         })
@@ -140,10 +142,11 @@ impl StatsRepositoryImpl {
 
     async fn add_fish_area_caught(
         tx: &DatabaseTransaction,
+        user_caught: Uuid,
         fish: &StatFish,
     ) -> Result<(), DbErr> {
         fish_caught_area::Entity::insert(fish_caught_area::ActiveModel {
-            user_id: Set(fish.user_id),
+            user_id: Set(user_caught),
             fish_id: Set(fish.fish_id),
             area_id: Set(fish.area_id),
         })
@@ -262,11 +265,12 @@ impl StatsRepository for StatsRepositoryImpl {
     async fn add_fish_tx(
         &self,
         tx: &DatabaseTransaction,
+        user_caught: Uuid,
         fish: StatFish,
     ) -> Result<(), DbErr> {
-        Self::add_fish_caught(tx, &fish).await?;
-        Self::add_fish_bait_caught(tx, &fish).await?;
-        Self::add_fish_area_caught(tx, &fish).await?;
+        Self::add_fish_caught(tx, user_caught, &fish).await?;
+        Self::add_fish_bait_caught(tx, user_caught, &fish).await?;
+        Self::add_fish_area_caught(tx, user_caught, &fish).await?;
         Ok(())
     }
 

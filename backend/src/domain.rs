@@ -24,7 +24,6 @@ pub struct User {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, FromRow)]
 pub struct StatFish {
-    pub user_id: Uuid,
     pub fish_id: i32,
     pub length: i32,
     pub bait_id: i32,
