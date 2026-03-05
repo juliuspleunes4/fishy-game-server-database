@@ -1,4 +1,5 @@
 use crate::controller::authentication::authentication_routes;
+use crate::controller::shop::shop_routes;
 use crate::controller::stats::stats_routes;
 use crate::controller::user::*;
 use crate::docs::ApiDoc;
@@ -6,6 +7,8 @@ use crate::domain::User;
 use crate::repository::friends::FriendRepositoryImpl;
 use crate::repository::user::UserRepositoryImpl;
 use crate::service::authentication::*;
+use crate::service::shop::ShopService;
+use crate::service::shop::ShopServiceImpl;
 use crate::service::user::UserService;
 use crate::service::user::UserServiceImpl;
 use crate::AuthenticationService;
@@ -138,7 +141,10 @@ async fn main() -> Result<(), rocket::Error> {
     let inventory_repository = InventoryRepositoryImpl::new();
 
     let user_service: Arc<dyn UserService> = Arc::new(UserServiceImpl::new(
+        db.clone(),
         user_repository.clone(),
+        stats_repository.clone(),
+        inventory_repository.clone(),
         secret_key.clone(),
     ));
 
@@ -168,6 +174,12 @@ async fn main() -> Result<(), rocket::Error> {
     let effects_service: Arc<dyn EffectsService> =
         Arc::new(EffectsServiceImpl::new(effects_repository.clone()));
 
+    let shop_service: Arc<dyn ShopService> = Arc::new(ShopServiceImpl::new(
+        db.clone(),
+        stats_repository.clone(),
+        inventory_repository.clone(),
+    ));
+
     // Add here more repositories and services when your backend grows.
 
     // Set rocket configuration.
@@ -193,6 +205,7 @@ async fn main() -> Result<(), rocket::Error> {
         .manage(data_service)
         .manage(friend_service)
         .manage(effects_service)
+        .manage(shop_service)
         // expose swagger ui.
         // Go to http://localhost:8000/docs to view your endpoint documentation.
         .mount(
@@ -208,6 +221,7 @@ async fn main() -> Result<(), rocket::Error> {
         .mount("/data", data_routes())
         .mount("/friend", friend_routes())
         .mount("/effects", effects_routes())
+        .mount("/shop", shop_routes())
         .attach(cors)
         .launch()
         .await?;

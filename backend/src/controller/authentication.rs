@@ -12,9 +12,6 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-struct GetPlacesRequest;
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
 struct LoginRequest {
     username: String,
     password: String,

@@ -6,12 +6,12 @@ use crate::controller::inventory::*;
 use crate::controller::mail::*;
 use crate::controller::stats::*;
 use crate::controller::user::*;
+use crate::controller::shop::*;
 use utoipa::OpenApi;
 
 #[derive(OpenApi)]
 #[openapi(paths(
     create_user,
-    get_user,
     login,
     remove_friend,
     add_friend_request,
@@ -26,11 +26,12 @@ use utoipa::OpenApi;
     delete_mail,
     change_read_state,
     change_archive_state,
-    add_or_update_item,
+    use_item,
     destroy_item,
     add_effect,
     remove_expired_effects,
     cleanup_all_expired_effects,
     retreive_player_data,
+    buy_item,
 ))]
 pub struct ApiDoc;

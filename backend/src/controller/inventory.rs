@@ -18,22 +18,6 @@ struct UseItemRequest {
 
 /// Request body for adding an item.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-struct DegradeItemRequest {
-    pub user_id: Uuid,
-    pub item_uid: Uuid,
-    pub amount: i32,
-}
-
-/// Request body for adding an item.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-struct IncreaseItemRequest {
-    pub user_id: Uuid,
-    pub item_uid: Uuid,
-    pub amount: i32,
-}
-
-/// Request body for adding an item.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
 struct DestroyItemRequest {
     pub user_id: Uuid,
     pub item_uid: Uuid,
@@ -44,7 +28,7 @@ struct DestroyItemRequest {
 // Make sure to add your endpoint in docs.rs when you write new endpoints.
 #[utoipa::path(
     post,
-    path = "/inventory/useItem",
+    path = "/inventory/use_item",
     request_body = UseItemRequest,
     responses(
         (status = 201, description = "Item used successfully", body = bool),
@@ -56,7 +40,7 @@ struct DestroyItemRequest {
     tag = "Inventory"
 )]
 #[post("/use_item", data = "<payload>")]
-async fn add_or_update_item(
+async fn use_item(
     payload: Json<UseItemRequest>,
     inventory_service: &State<Arc<dyn InventoryService>>,
 ) -> Json<bool> {
@@ -106,5 +90,5 @@ async fn destroy_item(
 
 // Combine all the inventory routes.
 pub fn inventory_routes() -> Vec<rocket::Route> {
-    routes![add_or_update_item, destroy_item]
+    routes![use_item, destroy_item]
 }

@@ -1,10 +1,10 @@
-use rocket::{post, serde::json::Json, State};
+use rocket::{State, post, routes, serde::json::Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::service::{mail::MailService, shop::ShopService};
+use crate::service::shop::ShopService;
 
 /// Request body for buying an item.
 #[derive(Debug, Serialize, Deserialize, ToSchema, Clone, Copy)]
@@ -56,4 +56,10 @@ async fn buy_item(
         Ok(()) => Json(true),
         Err(_) => Json(false),
     }
+}
+
+pub fn shop_routes() -> Vec<rocket::Route> {
+    routes![
+        buy_item,
+    ]
 }

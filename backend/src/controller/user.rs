@@ -1,9 +1,6 @@
 use crate::domain::LoginResponse;
-use crate::domain::User;
 use crate::service::user::UserService;
-use rocket::get;
 use rocket::post;
-use rocket::response::status;
 use rocket::routes;
 use rocket::serde::json::Json;
 use rocket::State;
@@ -122,37 +119,7 @@ async fn change_password(
     }
 }
 
-/// Response for recieving user information.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-struct GetUserResponse {
-    name: String,
-    email: String,
-}
-
-#[utoipa::path(
-    get,
-    path = "/users",
-    responses(
-        (status = 201, description = "User recieved successfully", body = GetUserResponse),
-        (status = 400, description = "Invalid input data"),
-        (status = 500, description = "Internal server error")
-    ),
-    description = "Recieve user details.",
-    operation_id = "getUser",
-    tag = "Users",
-    security(
-        ("jwt_auth" = [])
-    )
-)]
-#[get("/")]
-async fn get_user(user: User) -> Result<Json<GetUserResponse>, status::Custom<String>> {
-    Ok(Json(GetUserResponse {
-        email: user.email,
-        name: user.name,
-    }))
-}
-
 // Combine all the user routes.
 pub fn user_routes() -> Vec<rocket::Route> {
-    routes![create_user, retreive_username, change_password, get_user]
+    routes![create_user, retreive_username, change_password]
 }

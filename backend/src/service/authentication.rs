@@ -4,6 +4,7 @@ use crate::utils::jwt::{generate_jwt, Claims};
 use bcrypt::verify;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use rocket::async_trait;
+use sea_orm::DbErr;
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -15,10 +16,10 @@ pub trait AuthenticationService: Send + Sync {
         &self,
         username: String,
         password: String,
-    ) -> Result<Option<LoginResponse>, sqlx::Error>;
+    ) -> Result<Option<LoginResponse>, DbErr>;
 
     /// Checks if a JWT is valid given credentials.
-    async fn verify_jwt(&self, token: &str) -> Result<Option<User>, sqlx::Error>;
+    async fn verify_jwt(&self, token: &str) -> Result<Option<User>, DbErr>;
 }
 
 /// AuthentcationServiceImpl requires:
@@ -45,8 +46,8 @@ impl<U: UserRepository> AuthenticationService for AuthenticationServiceImpl<U> {
         &self,
         username: String,
         password: String,
-    ) -> Result<Option<LoginResponse>, sqlx::Error> {
-        let user = match self.user_repository.from_username(username).await? {
+    ) -> Result<Option<LoginResponse>, DbErr> {
+        let user = match self.user_repository.from_username(username).await.map_err(|e| DbErr::Custom(e.to_string()))? {
             Some(user) => user,
             None => {
                 return Ok(None);
@@ -55,13 +56,13 @@ impl<U: UserRepository> AuthenticationService for AuthenticationServiceImpl<U> {
         match verify_password(&password, &user.salt, &user.password) {
             true => Ok(Some(LoginResponse {
                 code: 200,
-                jwt: generate_jwt(user.user_id, &self.secret_key)?,
+                jwt: generate_jwt(user.user_id, &self.secret_key).map_err(|e| DbErr::Custom(e))?,
             })),
             false => Ok(None),
         }
     }
 
-    async fn verify_jwt(&self, token: &str) -> Result<Option<User>, sqlx::Error> {
+    async fn verify_jwt(&self, token: &str) -> Result<Option<User>, DbErr> {
         let claims = decode::<Claims>(
             token,
             &DecodingKey::from_secret(self.secret_key.clone().as_bytes()),
@@ -73,7 +74,7 @@ impl<U: UserRepository> AuthenticationService for AuthenticationServiceImpl<U> {
             Ok(claims) => Ok(self
                 .user_repository
                 .from_uuid(Uuid::from_str(&claims.user_id).expect("Failed to generate uuid."))
-                .await?),
+                .await.map_err(|e| DbErr::Custom(e.to_string()))?),
             Err(_) => Ok(None),
         }
     }

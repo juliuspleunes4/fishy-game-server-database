@@ -1,7 +1,6 @@
 use rocket::async_trait;
 use sea_orm::{
-    sea_query::OnConflict, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection,
-    DatabaseTransaction, DbErr, EntityTrait, QueryFilter,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait, QueryFilter, sea_query::OnConflict
 };
 use uuid::Uuid;
 
@@ -24,6 +23,8 @@ pub trait InventoryRepository: Send + Sync {
         user_id: Uuid,
         item_uid: Uuid,
     ) -> Result<(), DbErr>;
+
+    async fn insert_new_inventory(&self, tx: &DatabaseTransaction, user_id: Uuid, rod_id: i32, rod_state: String, bait_id: i32, bait_state: String) -> Result<(), DbErr>;
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +81,27 @@ impl InventoryRepository for InventoryRepositoryImpl {
 
         if result.rows_affected == 0 {
             return Err(DbErr::RecordNotUpdated);
+        }
+
+        Ok(())
+    }
+
+    async fn insert_new_inventory(&self, tx: &DatabaseTransaction, user_id: Uuid, rod_id: i32, rod_state: String, bait_id: i32, bait_state: String) -> Result<(), DbErr> {
+        let default_items = [
+            (rod_id, rod_state),
+            (bait_id, bait_state),
+        ];
+
+        for (definition_id, state_blob) in default_items {
+            inventory_item::ActiveModel {
+                user_id: Set(user_id),
+                item_uuid: Set(Uuid::new_v4()),
+                definition_id: Set(definition_id),
+                state_blob: Set(state_blob),
+                ..Default::default()
+            }
+            .insert(tx)
+            .await?;
         }
 
         Ok(())

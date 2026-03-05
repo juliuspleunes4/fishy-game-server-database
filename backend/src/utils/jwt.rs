@@ -10,7 +10,7 @@ pub struct Claims {
     pub exp: usize, // Expiration time (as a timestamp)
 }
 
-pub fn generate_jwt(user_id: Uuid, secret_key: &str) -> Result<String, sqlx::Error> {
+pub fn generate_jwt(user_id: Uuid, secret_key: &str) -> Result<String, String> {
     // calculate experation time.
     let expiration = Utc::now()
         .checked_add_signed(Duration::hours(24))
@@ -23,12 +23,10 @@ pub fn generate_jwt(user_id: Uuid, secret_key: &str) -> Result<String, sqlx::Err
     };
 
     // generate jwt
-    let token = encode(
+    encode(
         &Header::default(),
         &claims,
         &EncodingKey::from_secret(secret_key.as_bytes()),
     )
-    .expect("JWT creation failed");
-
-    Ok(token)
+    .map_err(|_| "JWT creation failed".to_string())
 }

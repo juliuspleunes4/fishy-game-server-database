@@ -42,6 +42,8 @@ pub trait StatsRepository: Send + Sync {
     async fn select_rod(&self, user_id: Uuid, rod_uid: Uuid) -> Result<(), DbErr>;
 
     async fn select_bait(&self, user_id: Uuid, bait_uid: Uuid) -> Result<(), DbErr>;
+
+    async fn insert_new_stats(&self, tx: &DatabaseTransaction, user_id: Uuid, coins: i32, bucks: i32) -> Result<(), DbErr>;
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +256,16 @@ impl StatsRepository for StatsRepositoryImpl {
             .exec(&self.db)
             .await?;
 
+        Ok(())
+    }
+
+    async fn insert_new_stats(&self, tx: &DatabaseTransaction, user_id: Uuid, coins: i32, bucks: i32) -> Result<(), DbErr> {
+        stats::Entity::insert(stats::ActiveModel {
+            user_id: Set(user_id),
+            coins: Set(coins),
+            bucks: Set(bucks),
+            ..Default::default()
+        }).exec(tx).await?;
         Ok(())
     }
 }
