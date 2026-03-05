@@ -4,7 +4,7 @@ use crate::utils::jwt::{generate_jwt, Claims};
 use bcrypt::verify;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use rocket::async_trait;
-use sea_orm::DbErr;
+use sea_orm::{DatabaseConnection, DbErr, TransactionError, TransactionTrait};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -23,16 +23,19 @@ pub trait AuthenticationService: Send + Sync {
 }
 
 /// AuthentcationServiceImpl requires:
-/// User repository for recieving information about users.
-/// The secret key for signing JWT's.
-pub struct AuthenticationServiceImpl<U: UserRepository> {
+/// Database connection to access user data,
+/// user repository for recieving information about users,
+/// and the secret key for signing JWT's.
+pub struct AuthenticationServiceImpl<U: UserRepository + Clone> {
+    db: DatabaseConnection,
     user_repository: U,
     secret_key: String,
 }
 
-impl<U: UserRepository> AuthenticationServiceImpl<U> {
-    pub fn new(user_repository: U, secret_key: String) -> Self {
+impl<U: UserRepository + Clone> AuthenticationServiceImpl<U> {
+    pub fn new(db: DatabaseConnection, user_repository: U, secret_key: String) -> Self {
         Self {
+            db,
             user_repository,
             secret_key,
         }
@@ -41,17 +44,29 @@ impl<U: UserRepository> AuthenticationServiceImpl<U> {
 
 // Implement the authentication service trait for AuthenticationServiceImpl.
 #[async_trait]
-impl<U: UserRepository> AuthenticationService for AuthenticationServiceImpl<U> {
+impl<U: UserRepository + Clone + 'static> AuthenticationService for AuthenticationServiceImpl<U> {
     async fn login(
         &self,
         username: String,
         password: String,
     ) -> Result<Option<LoginResponse>, DbErr> {
-        let user = match self.user_repository.from_username(username).await.map_err(|e| DbErr::Custom(e.to_string()))? {
+        let user_repo = self.user_repository.clone();
+        let username_cloned = username.clone();
+
+        let user = self
+            .db
+            .transaction::<_, Option<User>, DbErr>(move |tx| {
+                Box::pin(async move { user_repo.from_username(tx, username_cloned).await })
+            })
+            .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })?;
+
+        let user = match user {
             Some(user) => user,
-            None => {
-                return Ok(None);
-            }
+            None => return Ok(None),
         };
         match verify_password(&password, &user.salt, &user.password) {
             true => Ok(Some(LoginResponse {
@@ -71,10 +86,24 @@ impl<U: UserRepository> AuthenticationService for AuthenticationServiceImpl<U> {
         .map(|data| data.claims);
 
         match claims {
-            Ok(claims) => Ok(self
-                .user_repository
-                .from_uuid(Uuid::from_str(&claims.user_id).expect("Failed to generate uuid."))
-                .await.map_err(|e| DbErr::Custom(e.to_string()))?),
+            Ok(claims) => {
+                let user_repo = self.user_repository.clone();
+                let user_id =
+                    Uuid::from_str(&claims.user_id).expect("Failed to generate uuid.");
+
+                let user = self
+                    .db
+                    .transaction::<_, Option<User>, DbErr>(move |tx| {
+                        Box::pin(async move { user_repo.from_uuid(tx, user_id).await })
+                    })
+                    .await
+                    .map_err(|e| match e {
+                        TransactionError::Connection(e) => e,
+                        TransactionError::Transaction(e) => e,
+                    })?;
+
+                Ok(user)
+            }
             Err(_) => Ok(None),
         }
     }

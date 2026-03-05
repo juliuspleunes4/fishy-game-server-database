@@ -7,18 +7,32 @@ use sea_orm::{
     prelude::Expr,
     sea_query::{Alias, Func, OnConflict},
     ActiveValue::{NotSet, Set},
-    ColumnTrait, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, ExprTrait,
-    QueryFilter, TransactionError, TransactionTrait,
+    ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, ExprTrait, QueryFilter,
 };
 use uuid::Uuid;
 
 #[async_trait]
 pub trait StatsRepository: Send + Sync {
-    async fn add_xp(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr>;
+    async fn add_xp(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        amount: i32,
+    ) -> Result<(), DbErr>;
 
-    async fn change_bucks(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr>;
+    async fn change_bucks(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        amount: i32,
+    ) -> Result<(), DbErr>;
 
-    async fn change_coins(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr>;
+    async fn change_coins(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        amount: i32,
+    ) -> Result<(), DbErr>;
 
     /// Transactional variants for use inside an existing `DatabaseTransaction`.
     async fn change_bucks_tx(
@@ -35,25 +49,48 @@ pub trait StatsRepository: Send + Sync {
         amount: i32,
     ) -> Result<(), DbErr>;
 
-    async fn add_playtime(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr>;
+    async fn add_playtime(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        amount: i32,
+    ) -> Result<(), DbErr>;
 
-    async fn add_fish(&self, fish: StatFish) -> Result<(), DbErr>;
+    async fn add_fish_tx(
+        &self,
+        tx: &DatabaseTransaction,
+        fish: StatFish,
+    ) -> Result<(), DbErr>;
 
-    async fn select_rod(&self, user_id: Uuid, rod_uid: Uuid) -> Result<(), DbErr>;
+    async fn select_rod(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        rod_uid: Uuid,
+    ) -> Result<(), DbErr>;
 
-    async fn select_bait(&self, user_id: Uuid, bait_uid: Uuid) -> Result<(), DbErr>;
+    async fn select_bait(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        bait_uid: Uuid,
+    ) -> Result<(), DbErr>;
 
-    async fn insert_new_stats(&self, tx: &DatabaseTransaction, user_id: Uuid, coins: i32, bucks: i32) -> Result<(), DbErr>;
+    async fn insert_new_stats(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        coins: i32,
+        bucks: i32,
+    ) -> Result<(), DbErr>;
 }
 
 #[derive(Debug, Clone)]
-pub struct StatsRepositoryImpl {
-    db: DatabaseConnection,
-}
+pub struct StatsRepositoryImpl;
 
 impl StatsRepositoryImpl {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub fn new() -> Self {
+        Self
     }
 
     async fn add_fish_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr> {
@@ -85,7 +122,10 @@ impl StatsRepositoryImpl {
         Ok(())
     }
 
-    async fn add_fish_bait_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr> {
+    async fn add_fish_bait_caught(
+        tx: &DatabaseTransaction,
+        fish: &StatFish,
+    ) -> Result<(), DbErr> {
         fish_caught_bait::Entity::insert(fish_caught_bait::ActiveModel {
             user_id: Set(fish.user_id),
             fish_id: Set(fish.fish_id),
@@ -98,7 +138,10 @@ impl StatsRepositoryImpl {
         Ok(())
     }
 
-    async fn add_fish_area_caught(tx: &DatabaseTransaction, fish: &StatFish) -> Result<(), DbErr> {
+    async fn add_fish_area_caught(
+        tx: &DatabaseTransaction,
+        fish: &StatFish,
+    ) -> Result<(), DbErr> {
         fish_caught_area::Entity::insert(fish_caught_area::ActiveModel {
             user_id: Set(fish.user_id),
             fish_id: Set(fish.fish_id),
@@ -113,11 +156,16 @@ impl StatsRepositoryImpl {
 
 #[async_trait]
 impl StatsRepository for StatsRepositoryImpl {
-    async fn add_xp(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr> {
+    async fn add_xp(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        amount: i32,
+    ) -> Result<(), DbErr> {
         let result = stats::Entity::update_many()
             .col_expr(stats::Column::Xp, Expr::col(stats::Column::Xp).add(amount))
             .filter(stats::Column::UserId.eq(user_id))
-            .exec(&self.db)
+            .exec(tx)
             .await?;
 
         if result.rows_affected == 0 {
@@ -127,14 +175,19 @@ impl StatsRepository for StatsRepositoryImpl {
         Ok(())
     }
 
-    async fn change_bucks(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr> {
+    async fn change_bucks(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        amount: i32,
+    ) -> Result<(), DbErr> {
         let result = stats::Entity::update_many()
             .col_expr(
                 stats::Column::Bucks,
                 Expr::col(stats::Column::Bucks).add(amount),
             )
             .filter(stats::Column::UserId.eq(user_id))
-            .exec(&self.db)
+            .exec(tx)
             .await?;
 
         if result.rows_affected == 0 {
@@ -144,14 +197,19 @@ impl StatsRepository for StatsRepositoryImpl {
         Ok(())
     }
 
-    async fn change_coins(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr> {
+    async fn change_coins(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        amount: i32,
+    ) -> Result<(), DbErr> {
         let result = stats::Entity::update_many()
             .col_expr(
                 stats::Column::Coins,
                 Expr::col(stats::Column::Coins).add(amount),
             )
             .filter(stats::Column::UserId.eq(user_id))
-            .exec(&self.db)
+            .exec(tx)
             .await?;
 
         if result.rows_affected == 0 {
@@ -167,20 +225,7 @@ impl StatsRepository for StatsRepositoryImpl {
         user_id: Uuid,
         amount: i32,
     ) -> Result<(), DbErr> {
-        let result = stats::Entity::update_many()
-            .col_expr(
-                stats::Column::Bucks,
-                Expr::col(stats::Column::Bucks).add(amount),
-            )
-            .filter(stats::Column::UserId.eq(user_id))
-            .exec(tx)
-            .await?;
-
-        if result.rows_affected == 0 {
-            return Err(DbErr::RecordNotFound("stats->bucks".into()));
-        }
-
-        Ok(())
+        self.change_bucks(tx, user_id, amount).await
     }
 
     async fn change_coins_tx(
@@ -189,12 +234,21 @@ impl StatsRepository for StatsRepositoryImpl {
         user_id: Uuid,
         amount: i32,
     ) -> Result<(), DbErr> {
+        self.change_coins(tx, user_id, amount).await
+    }
+
+    async fn add_playtime(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        amount: i32,
+    ) -> Result<(), DbErr> {
         let result = stats::Entity::update_many()
             .col_expr(
-                stats::Column::Coins,
-                Expr::col(stats::Column::Coins).add(amount),
+                stats::Column::TotalPlaytime,
+                Expr::col(stats::Column::TotalPlaytime).add(amount),
             )
-            .filter(stats::Column::UserId.eq(user_id))
+            .filter(stats::Column::Coins.eq(user_id))
             .exec(tx)
             .await?;
 
@@ -205,67 +259,62 @@ impl StatsRepository for StatsRepositoryImpl {
         Ok(())
     }
 
-    async fn add_playtime(&self, user_id: Uuid, amount: i32) -> Result<(), DbErr> {
-        let result = stats::Entity::update_many()
-            .col_expr(
-                stats::Column::TotalPlaytime,
-                Expr::col(stats::Column::TotalPlaytime).add(amount),
-            )
-            .filter(stats::Column::Coins.eq(user_id))
-            .exec(&self.db)
-            .await?;
-
-        if result.rows_affected == 0 {
-            return Err(DbErr::RecordNotFound("stats->bucks".into()));
-        }
-
+    async fn add_fish_tx(
+        &self,
+        tx: &DatabaseTransaction,
+        fish: StatFish,
+    ) -> Result<(), DbErr> {
+        Self::add_fish_caught(tx, &fish).await?;
+        Self::add_fish_bait_caught(tx, &fish).await?;
+        Self::add_fish_area_caught(tx, &fish).await?;
         Ok(())
     }
 
-    async fn add_fish(&self, fish: StatFish) -> Result<(), DbErr> {
-        self.db
-            .transaction::<_, (), DbErr>(|tx| {
-                Box::pin(async move {
-                    Self::add_fish_caught(tx, &fish).await?;
-                    Self::add_fish_bait_caught(tx, &fish).await?;
-                    Self::add_fish_area_caught(tx, &fish).await?;
-                    Ok(())
-                })
-            })
-            .await
-            .map_err(|e| match e {
-                TransactionError::Connection(e) => e,
-                TransactionError::Transaction(e) => e,
-            })
-    }
-
-    async fn select_rod(&self, user_id: Uuid, rod_uid: Uuid) -> Result<(), DbErr> {
+    async fn select_rod(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        rod_uid: Uuid,
+    ) -> Result<(), DbErr> {
         stats::Entity::update_many()
             .col_expr(stats::Column::SelectedRod, Expr::value(Some(rod_uid)))
             .filter(stats::Column::UserId.eq(user_id))
-            .exec(&self.db)
+            .exec(tx)
             .await?;
 
         Ok(())
     }
 
-    async fn select_bait(&self, user_id: Uuid, bait_uid: Uuid) -> Result<(), DbErr> {
+    async fn select_bait(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        bait_uid: Uuid,
+    ) -> Result<(), DbErr> {
         stats::Entity::update_many()
             .col_expr(stats::Column::SelectedBait, Expr::value(Some(bait_uid)))
             .filter(stats::Column::UserId.eq(user_id))
-            .exec(&self.db)
+            .exec(tx)
             .await?;
 
         Ok(())
     }
 
-    async fn insert_new_stats(&self, tx: &DatabaseTransaction, user_id: Uuid, coins: i32, bucks: i32) -> Result<(), DbErr> {
+    async fn insert_new_stats(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+        coins: i32,
+        bucks: i32,
+    ) -> Result<(), DbErr> {
         stats::Entity::insert(stats::ActiveModel {
             user_id: Set(user_id),
             coins: Set(coins),
             bucks: Set(bucks),
             ..Default::default()
-        }).exec(tx).await?;
+        })
+        .exec(tx)
+        .await?;
         Ok(())
     }
 }
@@ -287,3 +336,4 @@ mod tests {
         println!("{}", stmt);
     }
 }
+

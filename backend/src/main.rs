@@ -132,12 +132,12 @@ async fn main() -> Result<(), rocket::Error> {
     .expect("Failed to create CORS configuration");
 
     // Build the repository layers and service layers.
-    let user_repository = UserRepositoryImpl::new(db.clone());
-    let data_repository = DataRepositoryImpl::new(db.clone());
-    let effects_repository = EffectsRepositoryImpl::new(db.clone());
+    let user_repository = UserRepositoryImpl::new();
+    let data_repository = DataRepositoryImpl::new();
+    let effects_repository = EffectsRepositoryImpl::new();
     let friends_repository = FriendRepositoryImpl::new();
-    let stats_repository = StatsRepositoryImpl::new(db.clone());
-    let mail_repository = MailRepositoryImpl::new(db.clone());
+    let stats_repository = StatsRepositoryImpl::new();
+    let mail_repository = MailRepositoryImpl::new();
     let inventory_repository = InventoryRepositoryImpl::new();
 
     let user_service: Arc<dyn UserService> = Arc::new(UserServiceImpl::new(
@@ -149,11 +149,11 @@ async fn main() -> Result<(), rocket::Error> {
     ));
 
     let authentication_service: Arc<dyn AuthenticationService> = Arc::new(
-        AuthenticationServiceImpl::new(user_repository.clone(), secret_key.clone()),
+        AuthenticationServiceImpl::new(db.clone(), user_repository.clone(), secret_key.clone()),
     );
 
     let data_service: Arc<dyn DataService> =
-        Arc::new(DataServiceImpl::new(data_repository.clone()));
+        Arc::new(DataServiceImpl::new(db.clone(), data_repository.clone()));
 
     let friend_service: Arc<dyn FriendService> = Arc::new(FriendServiceImpl::new(
         db.clone(),
@@ -161,10 +161,10 @@ async fn main() -> Result<(), rocket::Error> {
     ));
 
     let stats_service: Arc<dyn StatsService> =
-        Arc::new(StatsServiceImpl::new(stats_repository.clone()));
+        Arc::new(StatsServiceImpl::new(db.clone(), stats_repository.clone()));
 
     let mail_service: Arc<dyn MailService> =
-        Arc::new(MailServiceImpl::new(mail_repository.clone()));
+        Arc::new(MailServiceImpl::new(db.clone(), mail_repository.clone()));
 
     let inventory_service: Arc<dyn InventoryService> = Arc::new(InventoryServiceImpl::new(
         db.clone(),
@@ -172,7 +172,7 @@ async fn main() -> Result<(), rocket::Error> {
     ));
 
     let effects_service: Arc<dyn EffectsService> =
-        Arc::new(EffectsServiceImpl::new(effects_repository.clone()));
+        Arc::new(EffectsServiceImpl::new(db.clone(), effects_repository.clone()));
 
     let shop_service: Arc<dyn ShopService> = Arc::new(ShopServiceImpl::new(
         db.clone(),

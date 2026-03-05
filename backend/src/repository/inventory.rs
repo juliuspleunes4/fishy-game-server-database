@@ -28,7 +28,7 @@ pub trait InventoryRepository: Send + Sync {
 }
 
 #[derive(Debug, Clone)]
-pub struct InventoryRepositoryImpl {}
+pub struct InventoryRepositoryImpl;
 
 impl InventoryRepositoryImpl {
     pub fn new() -> Self {

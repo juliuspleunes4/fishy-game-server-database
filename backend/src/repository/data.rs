@@ -10,25 +10,27 @@ use rocket::async_trait;
 use sea_orm::prelude::Expr;
 use sea_orm::sea_query::Alias;
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, ExprTrait,
-    JoinType, QueryFilter, QuerySelect, RelationTrait, TransactionError, TransactionTrait,
+    ColumnTrait, Condition, DatabaseTransaction, DbErr, EntityTrait, ExprTrait, JoinType,
+    QueryFilter, QuerySelect, RelationTrait,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
 
 #[async_trait]
 pub trait DataRepository: Send + Sync {
-    async fn retreive_all(&self, user_id: Uuid) -> Result<Option<UserData>, DbErr>;
+    async fn retreive_all(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+    ) -> Result<Option<UserData>, DbErr>;
 }
 
 #[derive(Debug, Clone)]
-pub struct DataRepositoryImpl {
-    db: DatabaseConnection,
-}
+pub struct DataRepositoryImpl;
 
 impl DataRepositoryImpl {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub fn new() -> Self {
+        Self
     }
 
     async fn fetch_user_name(
@@ -266,48 +268,42 @@ impl DataRepositoryImpl {
 
 #[async_trait]
 impl DataRepository for DataRepositoryImpl {
-    async fn retreive_all(&self, user_id: Uuid) -> Result<Option<UserData>, DbErr> {
-        self.db
-            .transaction::<_, Option<UserData>, DbErr>(|tx| {
-                Box::pin(async move {
-                    let name = match Self::fetch_user_name(tx, user_id).await? {
-                        Some(name) => name,
-                        None => return Ok(None),
-                    };
+    async fn retreive_all(
+        &self,
+        tx: &DatabaseTransaction,
+        user_id: Uuid,
+    ) -> Result<Option<UserData>, DbErr> {
+        let name = match Self::fetch_user_name(tx, user_id).await? {
+            Some(name) => name,
+            None => return Ok(None),
+        };
 
-                    let stats = match Self::fetch_stats(tx, user_id).await? {
-                        Some(s) => s,
-                        None => return Ok(None),
-                    };
+        let stats = match Self::fetch_stats(tx, user_id).await? {
+            Some(s) => s,
+            None => return Ok(None),
+        };
 
-                    let fish_data = Self::fetch_fish_data(tx, user_id).await?;
-                    let inventory_items = Self::fetch_inventory(tx, user_id).await?;
-                    let mailbox = Self::fetch_mailbox(tx, user_id).await?;
-                    let friends = Self::fetch_friends(tx, user_id).await?;
-                    let friend_requests = Self::fetch_friend_requests(tx, user_id).await?;
-                    let active_effects = Self::fetch_active_effects(tx, user_id).await?;
+        let fish_data = Self::fetch_fish_data(tx, user_id).await?;
+        let inventory_items = Self::fetch_inventory(tx, user_id).await?;
+        let mailbox = Self::fetch_mailbox(tx, user_id).await?;
+        let friends = Self::fetch_friends(tx, user_id).await?;
+        let friend_requests = Self::fetch_friend_requests(tx, user_id).await?;
+        let active_effects = Self::fetch_active_effects(tx, user_id).await?;
 
-                    Ok(Some(UserData {
-                        name,
-                        xp: stats.xp,
-                        coins: stats.coins,
-                        bucks: stats.bucks,
-                        total_playtime: stats.total_playtime,
-                        selected_rod: stats.selected_rod,
-                        selected_bait: stats.selected_bait,
-                        fish_data,
-                        inventory_items,
-                        mailbox,
-                        friends,
-                        friend_requests,
-                        active_effects,
-                    }))
-                })
-            })
-            .await
-            .map_err(|e| match e {
-                TransactionError::Connection(e) => e,
-                TransactionError::Transaction(e) => e,
-            })
+        Ok(Some(UserData {
+            name,
+            xp: stats.xp,
+            coins: stats.coins,
+            bucks: stats.bucks,
+            total_playtime: stats.total_playtime,
+            selected_rod: stats.selected_rod,
+            selected_bait: stats.selected_bait,
+            fish_data,
+            inventory_items,
+            mailbox,
+            friends,
+            friend_requests,
+            active_effects,
+        }))
     }
 }

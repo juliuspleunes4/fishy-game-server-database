@@ -1,7 +1,7 @@
 use crate::domain::{LoginResponse, User};
 use crate::repository::inventory::InventoryRepository;
 use crate::repository::stats::StatsRepository;
-use crate::repository::user::UserRepository;
+use crate::repository::user::{UserRepository, Username};
 use crate::utils::jwt::generate_jwt;
 use bcrypt::hash;
 use chrono::Utc;
@@ -19,15 +19,15 @@ pub trait UserService: Send + Sync {
         password: String,
     ) -> Result<LoginResponse, DbErr>;
 
-    async fn retreive_username(&self, email: String) -> Result<bool, sqlx::Error>;
+    async fn retreive_username(&self, email: String) -> Result<bool, DbErr>;
 
     async fn change_password(
         &self,
         name: String,
         new_password: String,
-    ) -> Result<bool, sqlx::Error>;
+    ) -> Result<bool, DbErr>;
 
-    async fn from_uuid(&self, user_id: Uuid) -> Result<Option<User>, sqlx::Error>;
+    async fn from_uuid(&self, user_id: Uuid) -> Result<Option<User>, DbErr>;
 }
 
 pub struct UserServiceImpl<U: UserRepository, S: StatsRepository, I: InventoryRepository> {
@@ -40,7 +40,13 @@ pub struct UserServiceImpl<U: UserRepository, S: StatsRepository, I: InventoryRe
 
 impl<U: UserRepository, S: StatsRepository, I: InventoryRepository> UserServiceImpl<U, S, I> {
     // create a new function for UserServiceImpl.
-    pub fn new(db: DatabaseConnection, user_repository: U, stats_repository: S, inventory_repository: I, secret_key: String) -> Self {
+    pub fn new(
+        db: DatabaseConnection,
+        user_repository: U,
+        stats_repository: S,
+        inventory_repository: I,
+        secret_key: String,
+    ) -> Self {
         Self {
             db,
             user_repository,
@@ -53,7 +59,12 @@ impl<U: UserRepository, S: StatsRepository, I: InventoryRepository> UserServiceI
 
 // Implement UserService trait for UserServiceImpl.
 #[async_trait]
-impl<U: UserRepository + Clone + 'static, S: StatsRepository + Clone + 'static, I: InventoryRepository + Clone + 'static> UserService for UserServiceImpl<U, S, I> {
+impl<
+        U: UserRepository + Clone + 'static,
+        S: StatsRepository + Clone + 'static,
+        I: InventoryRepository + Clone + 'static,
+    > UserService for UserServiceImpl<U, S, I>
+{
     async fn create(
         &self,
         name: String,
@@ -95,27 +106,44 @@ impl<U: UserRepository + Clone + 'static, S: StatsRepository + Clone + 'static, 
             })
     }
 
-    async fn retreive_username(&self, email: String) -> Result<bool, sqlx::Error> {
-        match self.user_repository.get_username_from_email(email).await {
-            Ok(_) => Ok(true),
-            Err(e) => {
-                dbg!(&e);
-                return Ok(false);
-            }
-        }
+    async fn retreive_username(&self, email: String) -> Result<bool, DbErr> {
+        let user_repo = self.user_repository.clone();
+        let email_cloned = email.clone();
+
+        let result = self
+            .db
+            .transaction::<_, Option<Username>, DbErr>(move |tx| {
+                Box::pin(async move { user_repo.get_username_from_email(tx, email_cloned).await })
+            })
+            .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })?;
+
+        Ok(result.is_some())
     }
 
     async fn change_password(
         &self,
         _name: String,
         _new_password: String,
-    ) -> Result<bool, sqlx::Error> {
+    ) -> Result<bool, DbErr> {
         Ok(false)
     }
 
-    async fn from_uuid(&self, user_id: Uuid) -> Result<Option<User>, sqlx::Error> {
-        // recieve the user from the database given a user_id.
-        self.user_repository.from_uuid(user_id).await
+    async fn from_uuid(&self, user_id: Uuid) -> Result<Option<User>, DbErr> {
+        let user_repo = self.user_repository.clone();
+
+        self.db
+            .transaction::<_, Option<User>, DbErr>(move |tx| {
+                Box::pin(async move { user_repo.from_uuid(tx, user_id).await })
+            })
+            .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 }
 

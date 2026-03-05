@@ -42,7 +42,7 @@ pub trait FriendRepository: Send + Sync {
 }
 
 #[derive(Debug, Clone)]
-pub struct FriendRepositoryImpl {}
+pub struct FriendRepositoryImpl;
 
 impl FriendRepositoryImpl {
     pub fn new() -> Self {

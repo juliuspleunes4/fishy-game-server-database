@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rocket::async_trait;
-use sea_orm::DbErr;
+use sea_orm::{DatabaseConnection, DbErr, TransactionError, TransactionTrait};
 use uuid::Uuid;
 
 use crate::repository::mail::MailRepository;
@@ -33,20 +33,21 @@ pub trait MailService: Send + Sync {
     ) -> Result<(), DbErr>;
 }
 
-pub struct MailServiceImpl<T: MailRepository> {
+pub struct MailServiceImpl<T: MailRepository + Clone> {
+    db: DatabaseConnection,
     mail_repository: T,
 }
 
-impl<R: MailRepository> MailServiceImpl<R> {
+impl<R: MailRepository + Clone> MailServiceImpl<R> {
     // create a new function for MailServiceImpl.
-    pub fn new(mail_repository: R) -> Self {
-        Self { mail_repository }
+    pub fn new(db: DatabaseConnection, mail_repository: R) -> Self {
+        Self { db, mail_repository }
     }
 }
 
 // Implement MailService trait for MailServiceImpl.
 #[async_trait]
-impl<R: MailRepository> MailService for MailServiceImpl<R> {
+impl<R: MailRepository + Clone + 'static> MailService for MailServiceImpl<R> {
     async fn create(
         &self,
         mail_id: Uuid,
@@ -55,13 +56,36 @@ impl<R: MailRepository> MailService for MailServiceImpl<R> {
         title: String,
         message: String,
     ) -> Result<(), DbErr> {
-        self.mail_repository
-            .create(mail_id, sender_id, receiver_ids, title, message, Utc::now())
+        let mail_repo = self.mail_repository.clone();
+        let send_time = Utc::now();
+
+        self.db
+            .transaction::<_, (), DbErr>(move |tx| {
+                Box::pin(async move {
+                    mail_repo
+                        .create_tx(tx, mail_id, sender_id, receiver_ids, title, message, send_time)
+                        .await
+                })
+            })
             .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 
     async fn delete(&self, user_id: Uuid, mail_id: Uuid) -> Result<(), DbErr> {
-        self.mail_repository.delete(user_id, mail_id).await
+        let mail_repo = self.mail_repository.clone();
+
+        self.db
+            .transaction::<_, (), DbErr>(move |tx| {
+                Box::pin(async move { mail_repo.delete_tx(tx, user_id, mail_id).await })
+            })
+            .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 
     async fn change_read_state(
@@ -70,7 +94,17 @@ impl<R: MailRepository> MailService for MailServiceImpl<R> {
         mail_id: Uuid,
         read: bool,
     ) -> Result<(), DbErr> {
-        self.mail_repository.read(user_id, mail_id, read).await
+        let mail_repo = self.mail_repository.clone();
+
+        self.db
+            .transaction::<_, (), DbErr>(move |tx| {
+                Box::pin(async move { mail_repo.read(tx, user_id, mail_id, read).await })
+            })
+            .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 
     async fn change_archive_state(
@@ -79,8 +113,16 @@ impl<R: MailRepository> MailService for MailServiceImpl<R> {
         mail_id: Uuid,
         archive: bool,
     ) -> Result<(), DbErr> {
-        self.mail_repository
-            .archive(user_id, mail_id, archive)
+        let mail_repo = self.mail_repository.clone();
+
+        self.db
+            .transaction::<_, (), DbErr>(move |tx| {
+                Box::pin(async move { mail_repo.archive(tx, user_id, mail_id, archive).await })
+            })
             .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 }
