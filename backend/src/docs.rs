@@ -2,6 +2,7 @@ use crate::controller::authentication::*;
 use crate::controller::data::*;
 use crate::controller::effects::*;
 use crate::controller::friends::*;
+use crate::controller::fishmarket::*;
 use crate::controller::inventory::*;
 use crate::controller::mail::*;
 use crate::controller::stats::*;
@@ -13,6 +14,7 @@ use utoipa::OpenApi;
 #[openapi(paths(
     create_user,
     login,
+    sell_fishes,
     remove_friend,
     add_friend_request,
     handle_friend_request,

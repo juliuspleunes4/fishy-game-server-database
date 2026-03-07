@@ -20,7 +20,7 @@ struct LoginRequest {
 // Return type should later be CreateUserRepsonse
 #[utoipa::path(
     post,
-    path = "/login",
+    path = "account/login",
     request_body = LoginRequest,
     responses(
         (status = 201, description = "Login successful", body = LoginResponse),
@@ -31,7 +31,7 @@ struct LoginRequest {
     operation_id = "Login",
     tag = "Authentication"
 )]
-#[post("/", data = "<payload>")]
+#[post("/login", data = "<payload>")]
 async fn login(
     payload: Json<LoginRequest>,
     authentication_service: &State<Arc<dyn AuthenticationService>>,

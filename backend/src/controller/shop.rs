@@ -16,7 +16,7 @@ pub enum MoneyType {
 /// Request body for buying an item.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 struct BuyItemRequest {
-    pub player_id: Uuid,
+    pub buyer_id: Uuid,
     pub item_def_id: i32,
     pub item_uuid: Uuid,
     pub item_state_blob: String,
@@ -44,7 +44,7 @@ async fn buy_item(
 ) -> Json<bool> {
     match shop_service
         .buy_item(
-            payload.player_id,
+            payload.buyer_id,
             payload.item_def_id,
             payload.item_uuid,
             payload.item_state_blob.clone(),

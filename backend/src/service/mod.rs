@@ -2,6 +2,7 @@
 pub mod authentication;
 pub mod data;
 pub mod effects;
+pub mod fishmarket;
 pub mod friends;
 pub mod inventory;
 pub mod mail;
