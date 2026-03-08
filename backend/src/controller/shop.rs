@@ -42,19 +42,24 @@ async fn buy_item(
     payload: Json<BuyItemRequest>,
     shop_service: &State<Arc<dyn ShopService>>,
 ) -> Json<bool> {
+    let inner = payload.into_inner();
+    println!("{:?}", &inner);
     match shop_service
         .buy_item(
-            payload.buyer_id,
-            payload.item_def_id,
-            payload.item_uuid,
-            payload.item_state_blob.clone(),
-            payload.item_price,
-            payload.bought_using,
+            inner.buyer_id,
+            inner.item_def_id,
+            inner.item_uuid,
+            inner.item_state_blob,
+            inner.item_price,
+            inner.bought_using,
         )
         .await
     {
         Ok(()) => Json(true),
-        Err(_) => Json(false),
+        Err(e) => {
+            println!("{}", e);
+            Json(false)
+        },
     }
 }
 

@@ -64,12 +64,12 @@ impl<R: StatsRepository + Clone + 'static, T: InventoryRepository + Clone + 'sta
                     match bought_using {
                         MoneyType::BUCKS => {
                             stats_repo
-                                .change_bucks_tx(tx, buyer_uuid, item_price)
+                                .change_bucks_tx(tx, buyer_uuid, -item_price)
                                 .await?;
                         }
                         MoneyType::COINS => {
                             stats_repo
-                                .change_coins_tx(tx, buyer_uuid, item_price)
+                                .change_coins_tx(tx, buyer_uuid, -item_price)
                                 .await?;
                         }
                     }

@@ -57,7 +57,7 @@ impl InventoryRepository for InventoryRepositoryImpl {
                 .update_column(inventory_item::Column::StateBlob)
                 .to_owned(),
         )
-        .exec(tx)
+        .exec_without_returning(tx)
         .await?;
 
         Ok(())

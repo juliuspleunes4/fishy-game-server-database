@@ -7,9 +7,8 @@ use uuid::Uuid;
 
 use crate::service::inventory::InventoryService;
 
-/// Request body for adding an item.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-struct UseItemRequest {
+struct AddOrUpdateItemRequest {
     pub user_id: Uuid,
     pub item_uuid: Uuid,
     pub definition_id: i32,
@@ -21,41 +20,6 @@ struct UseItemRequest {
 struct DestroyItemRequest {
     pub user_id: Uuid,
     pub item_uid: Uuid,
-}
-
-// Utoipa is the crate that generates swagger documentation for your endpoints.
-// The documentation for each endpoint is combined in docs.rs
-// Make sure to add your endpoint in docs.rs when you write new endpoints.
-#[utoipa::path(
-    post,
-    path = "/inventory/use_item",
-    request_body = UseItemRequest,
-    responses(
-        (status = 201, description = "Item used successfully", body = bool),
-        (status = 400, description = "Invalid input data"),
-        (status = 500, description = "Internal server error")
-    ),
-    description = "Use an item in the inventory",
-    operation_id = "useItem",
-    tag = "Inventory"
-)]
-#[post("/use_item", data = "<payload>")]
-async fn use_item(
-    payload: Json<UseItemRequest>,
-    inventory_service: &State<Arc<dyn InventoryService>>,
-) -> Json<bool> {
-    match inventory_service
-        .use_item(
-            payload.user_id,
-            payload.item_uuid,
-            payload.definition_id,
-            payload.state_blob.clone(),
-        )
-        .await
-    {
-        Ok(()) => Json(true),
-        Err(_) => Json(false),
-    }
 }
 
 // Utoipa is the crate that generates swagger documentation for your endpoints.
@@ -88,7 +52,40 @@ async fn destroy_item(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/inventory/addOrUpdate",
+    request_body = AddOrUpdateItemRequest,
+    responses(
+        (status = 201, description = "Item added/updated successfully", body = bool),
+        (status = 400, description = "Invalid input data"),
+        (status = 500, description = "Internal server error")
+    ),
+    description = "Inserts an item in the database or updates it if it did already exist",
+    operation_id = "addOrUpdateItem",
+    tag = "Inventory"
+)]
+#[post("/add", data = "<payload>")]
+async fn add_or_update_item(
+    payload: Json<AddOrUpdateItemRequest>,
+    inventory_service: &State<Arc<dyn InventoryService>>,
+) -> Json<bool> {
+    match inventory_service
+        .add_or_update_item(
+            payload.user_id,
+            payload.item_uuid,
+            payload.definition_id,
+            payload.state_blob.clone(),
+        )
+        .await
+    {
+        Ok(()) => Json(true),
+        Err(_) => Json(false),
+    }
+}
+
+
 // Combine all the inventory routes.
 pub fn inventory_routes() -> Vec<rocket::Route> {
-    routes![use_item, destroy_item]
+    routes![destroy_item, add_or_update_item]
 }

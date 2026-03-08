@@ -214,7 +214,7 @@ async fn main() -> Result<(), rocket::Error> {
         )
         // Mount all your routes here.
         .mount("/account", user_routes())
-        .mount("/login", authentication_routes())
+        .mount("/auth", authentication_routes())
         .mount("/stats", stats_routes())
         .mount("/mail", mail_routes())
         .mount("/inventory", inventory_routes())

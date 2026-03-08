@@ -7,7 +7,7 @@ use crate::repository::inventory::InventoryRepository;
 // Here you add your business logic here.
 #[async_trait]
 pub trait InventoryService: Send + Sync {
-    async fn use_item(
+    async fn add_or_update_item(
         &self,
         user_uuid: Uuid,
         item_uuid: Uuid,
@@ -36,7 +36,7 @@ impl<R: InventoryRepository + Clone> InventoryServiceImpl<R> {
 // Implement InventoryService trait for InventoryServiceImpl.
 #[async_trait]
 impl<R: InventoryRepository + Clone + 'static> InventoryService for InventoryServiceImpl<R> {
-    async fn use_item(
+    async fn add_or_update_item(
         &self,
         user_uuid: Uuid,
         item_uuid: Uuid,

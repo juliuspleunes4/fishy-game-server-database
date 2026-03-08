@@ -20,7 +20,7 @@ struct LoginRequest {
 // Return type should later be CreateUserRepsonse
 #[utoipa::path(
     post,
-    path = "account/login",
+    path = "/auth/login",
     request_body = LoginRequest,
     responses(
         (status = 201, description = "Login successful", body = LoginResponse),

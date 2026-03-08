@@ -20,21 +20,6 @@ pub trait StatsRepository: Send + Sync {
         amount: i32,
     ) -> Result<(), DbErr>;
 
-    async fn change_bucks(
-        &self,
-        tx: &DatabaseTransaction,
-        user_id: Uuid,
-        amount: i32,
-    ) -> Result<(), DbErr>;
-
-    async fn change_coins(
-        &self,
-        tx: &DatabaseTransaction,
-        user_id: Uuid,
-        amount: i32,
-    ) -> Result<(), DbErr>;
-
-    /// Transactional variants for use inside an existing `DatabaseTransaction`.
     async fn change_bucks_tx(
         &self,
         tx: &DatabaseTransaction,
@@ -178,7 +163,7 @@ impl StatsRepository for StatsRepositoryImpl {
         Ok(())
     }
 
-    async fn change_bucks(
+    async fn change_bucks_tx(
         &self,
         tx: &DatabaseTransaction,
         user_id: Uuid,
@@ -200,7 +185,7 @@ impl StatsRepository for StatsRepositoryImpl {
         Ok(())
     }
 
-    async fn change_coins(
+    async fn change_coins_tx(
         &self,
         tx: &DatabaseTransaction,
         user_id: Uuid,
@@ -220,24 +205,6 @@ impl StatsRepository for StatsRepositoryImpl {
         }
 
         Ok(())
-    }
-
-    async fn change_bucks_tx(
-        &self,
-        tx: &DatabaseTransaction,
-        user_id: Uuid,
-        amount: i32,
-    ) -> Result<(), DbErr> {
-        self.change_bucks(tx, user_id, amount).await
-    }
-
-    async fn change_coins_tx(
-        &self,
-        tx: &DatabaseTransaction,
-        user_id: Uuid,
-        amount: i32,
-    ) -> Result<(), DbErr> {
-        self.change_coins(tx, user_id, amount).await
     }
 
     async fn add_playtime(

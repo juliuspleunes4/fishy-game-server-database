@@ -25,7 +25,7 @@ use utoipa::OpenApi;
     delete_mail,
     change_read_state,
     change_archive_state,
-    use_item,
+    add_or_update_item,
     destroy_item,
     add_effect,
     remove_expired_effects,
