@@ -6,7 +6,7 @@
 use crate::domain::{Competition, CompetitionResult};
 use chrono::{DateTime, Utc};
 use rocket::async_trait;
-use sqlx::{Error, PgPool};
+use sqlx::{Error, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 #[async_trait]
@@ -194,5 +194,91 @@ impl CompetitionsRepository for CompetitionsRepositoryImpl {
         .await?;
 
         Ok(result.count.unwrap_or(0))
+    }
+}
+
+impl CompetitionsRepositoryImpl {
+    /// Create a new competition within an existing transaction
+    /// This allows the service layer to coordinate multiple operations atomically
+    pub async fn create_competition_tx(
+        tx: &mut Transaction<'_, Postgres>,
+        competition_id: Uuid,
+        competition_type: i32,
+        target_fish_id: i32,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+        reward_currency: String,
+        prize_pool: Vec<i32>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"INSERT INTO competitions 
+               (competition_id, competition_type, target_fish_id, start_time, end_time, 
+                reward_currency, prize_pool, status)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, 'SCHEDULED')"#,
+            competition_id,
+            competition_type,
+            target_fish_id,
+            start_time,
+            end_time,
+            reward_currency,
+            &prize_pool
+        )
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+    
+    /// Count competitions by status within a transaction
+    pub async fn count_competitions_by_status_tx(
+        tx: &mut Transaction<'_, Postgres>,
+        status: String,
+    ) -> Result<i64, sqlx::Error> {
+        let result = sqlx::query!(
+            r#"SELECT COUNT(*) as count FROM competitions WHERE status = $1"#,
+            status
+        )
+        .fetch_one(&mut **tx)
+        .await?;
+
+        Ok(result.count.unwrap_or(0))
+    }
+    
+    /// Get all active competitions within a transaction
+    pub async fn get_active_competitions_tx(
+        tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<Vec<Competition>, sqlx::Error> {
+        let competitions = sqlx::query_as!(
+            Competition,
+            r#"SELECT competition_id, competition_type, target_fish_id, 
+                      start_time, end_time, reward_currency, prize_pool, 
+                      created_at, status
+               FROM competitions 
+               WHERE status = 'ACTIVE'
+               ORDER BY start_time ASC"#
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(competitions)
+    }
+    
+    /// Get all upcoming competitions within a transaction
+    pub async fn get_upcoming_competitions_tx(
+        tx: &mut Transaction<'_, Postgres>,
+    ) -> Result<Vec<Competition>, sqlx::Error> {
+        let competitions = sqlx::query_as!(
+            Competition,
+            r#"SELECT competition_id, competition_type, target_fish_id, 
+                      start_time, end_time, reward_currency, prize_pool, 
+                      created_at, status
+               FROM competitions 
+               WHERE status = 'SCHEDULED'
+               ORDER BY start_time ASC"#
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(competitions)
     }
 }

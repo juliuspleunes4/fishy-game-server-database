@@ -8,21 +8,23 @@ use uuid::Uuid;
 
 #[utoipa::path(
     get,
-    path = "/competitions/active",
+    path = "/competition/active",
     responses(
-        (status = 200, description = "List of active competitions", body = Vec<Competition>),
+        (status = 200, description = "Active competition", body = Competition),
+        (status = 404, description = "No active competition"),
         (status = 500, description = "Internal server error")
     )
 )]
 #[get("/active")]
-pub async fn get_active_competitions(
+pub async fn get_active_competition(
     competitions_service: &State<Arc<dyn CompetitionsService>>,
-) -> Json<Vec<Competition>> {
-    match competitions_service.get_active_competitions().await {
-        Ok(competitions) => Json(competitions),
+) -> Option<Json<Competition>> {
+    match competitions_service.get_active_competition().await {
+        Ok(Some(competition)) => Some(Json(competition)),
+        Ok(None) => None,
         Err(e) => {
-            eprintln!("Error fetching active competitions: {:?}", e);
-            Json(vec![])
+            eprintln!("Error fetching active competition: {:?}", e);
+            None
         }
     }
 }
@@ -50,75 +52,43 @@ pub async fn get_upcoming_competitions(
 
 #[utoipa::path(
     get,
-    path = "/competitions/{competition_id}",
-    params(
-        ("competition_id" = String, Path, description = "Competition ID")
-    ),
+    path = "/competitions/results",
     responses(
-        (status = 200, description = "Competition details", body = Competition),
-        (status = 404, description = "Competition not found"),
+        (status = 200, description = "Active competition leaderboard", body = LeaderboardResponse),
+        (status = 404, description = "No active competition"),
         (status = 500, description = "Internal server error")
     )
 )]
-#[get("/<competition_id>")]
-pub async fn get_competition(
-    competition_id: String,
-    competitions_service: &State<Arc<dyn CompetitionsService>>,
-) -> Option<Json<Competition>> {
-    let uuid = match Uuid::parse_str(&competition_id) {
-        Ok(id) => id,
-        Err(e) => {
-            eprintln!("Invalid UUID: {:?}", e);
-            return None;
-        }
-    };
-    
-    match competitions_service
-        .get_competition_by_id(uuid)
-        .await
-    {
-        Ok(Some(competition)) => Some(Json(competition)),
-        Ok(None) => None,
-        Err(e) => {
-            eprintln!("Error fetching competition: {:?}", e);
-            None
-        }
-    }
-}
-
-#[utoipa::path(
-    get,
-    path = "/competitions/{competition_id}/results",
-    params(
-        ("competition_id" = String, Path, description = "Competition ID")
-    ),
-    responses(
-        (status = 200, description = "Competition leaderboard", body = LeaderboardResponse),
-        (status = 500, description = "Internal server error")
-    )
-)]
-#[get("/<competition_id>/results")]
+#[get("/results")]
 pub async fn get_competition_results(
-    competition_id: String,
     competitions_service: &State<Arc<dyn CompetitionsService>>,
 ) -> Json<LeaderboardResponse> {
-    let uuid = match Uuid::parse_str(&competition_id) {
-        Ok(id) => id,
-        Err(e) => {
-            eprintln!("Invalid UUID: {:?}", e);
-            return Json(LeaderboardResponse {
+    // Get the active competition first
+    match competitions_service.get_active_competition().await {
+        Ok(Some(competition)) => {
+            // Get leaderboard for the active competition
+            match competitions_service.get_leaderboard(competition.competition_id).await {
+                Ok(leaderboard) => Json(leaderboard),
+                Err(e) => {
+                    eprintln!("Error fetching leaderboard: {:?}", e);
+                    Json(LeaderboardResponse {
+                        competition_id: competition.competition_id,
+                        results: vec![],
+                    })
+                }
+            }
+        }
+        Ok(None) => {
+            // No active competition
+            Json(LeaderboardResponse {
                 competition_id: Uuid::nil(),
                 results: vec![],
-            });
+            })
         }
-    };
-    
-    match competitions_service.get_leaderboard(uuid).await {
-        Ok(leaderboard) => Json(leaderboard),
         Err(e) => {
-            eprintln!("Error fetching leaderboard: {:?}", e);
+            eprintln!("Error fetching active competition: {:?}", e);
             Json(LeaderboardResponse {
-                competition_id: uuid,
+                competition_id: Uuid::nil(),
                 results: vec![],
             })
         }
@@ -173,11 +143,13 @@ pub async fn generate_competitions(
     }
 }
 
+pub fn active_competition_routes() -> Vec<rocket::Route> {
+    routes![get_active_competition]
+}
+
 pub fn competition_routes() -> Vec<rocket::Route> {
     routes![
-        get_active_competitions,
         get_upcoming_competitions,
-        get_competition,
         get_competition_results,
         submit_score,
         generate_competitions

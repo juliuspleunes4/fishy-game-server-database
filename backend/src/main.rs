@@ -1,5 +1,5 @@
 use crate::controller::authentication::authentication_routes;
-use crate::controller::competitions::competition_routes;
+use crate::controller::competitions::{active_competition_routes, competition_routes};
 use crate::controller::stats::stats_routes;
 use crate::domain::User;
 use crate::repository::competitions::CompetitionsRepositoryImpl;
@@ -171,10 +171,9 @@ async fn main() -> Result<(), rocket::Error> {
     );
 
     let competitions_service: Arc<dyn CompetitionsService> = Arc::new(
-        CompetitionsServiceImpl::new(competitions_repository.clone())
+        CompetitionsServiceImpl::new(pool.clone(), competitions_repository.clone())
     );
 
-    // Start the competition scheduler to automatically generate competitions once per day
     CompetitionScheduler::new(competitions_service.clone()).start();
 
     // Add here more repositories and services when your backend grows.
@@ -214,6 +213,7 @@ async fn main() -> Result<(), rocket::Error> {
         .mount("/data", data_routes())
         .mount("/friend", friend_routes())
         .mount("/effects", effects_routes())
+        .mount("/competition", active_competition_routes())
         .mount("/competitions", competition_routes())
         .attach(cors)
         .launch()
