@@ -2,17 +2,59 @@ use chrono::Utc;
 use rand::Rng;
 use rand::seq::SliceRandom;
 use rocket::async_trait;
+use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
     domain::{Competition, LeaderboardResponse, SubmitScoreRequest},
-    repository::competitions::CompetitionsRepository,
+    repository::competitions::{CompetitionsRepository, CompetitionsRepositoryImpl},
 };
+
+/// Competition type enum for type safety
+#[derive(Debug, Clone, Copy)]
+enum CompetitionType {
+    MostFish = 1,
+    LargestFish = 2,
+    MostItems = 3,
+}
+
+impl CompetitionType {
+    /// Convert enum to string for JSON serialization (Unity expects strings)
+    fn to_string(&self) -> String {
+        match self {
+            CompetitionType::MostFish => "MostFish".to_string(),
+            CompetitionType::LargestFish => "LargestFish".to_string(),
+            CompetitionType::MostItems => "MostItems".to_string(),
+        }
+    }
+    
+    /// Convert enum to i32 for database storage
+    fn to_i32(&self) -> i32 {
+        *self as i32
+    }
+}
+
+/// Currency enum for type safety
+#[derive(Debug, Clone, Copy)]
+enum Currency {
+    Coins,
+    Bucks,
+}
+
+impl Currency {
+    /// Convert enum to string for database storage and JSON serialization
+    fn to_string(&self) -> String {
+        match self {
+            Currency::Coins => "COINS".to_string(),
+            Currency::Bucks => "BUCKS".to_string(),
+        }
+    }
+}
 
 /// Predefined competition template to ensure catchable and interesting competitions
 #[derive(Clone)]
 struct CompetitionTemplate {
-    competition_type: i32,  // 1=MostFish, 2=LargestFish, 3=MostItems
+    competition_type: CompetitionType,
     target_fish_id: i32,
     description: &'static str,
 }
@@ -21,33 +63,33 @@ struct CompetitionTemplate {
 /// These are hand-picked to ensure fish are catchable and competitions are interesting
 fn get_competition_templates() -> Vec<CompetitionTemplate> {
     vec![
-        // MostFish competitions (Type 1)
-        CompetitionTemplate { competition_type: 1, target_fish_id: 1, description: "Catch the most Common Fish" },
-        CompetitionTemplate { competition_type: 1, target_fish_id: 5, description: "Catch the most Trout" },
-        CompetitionTemplate { competition_type: 1, target_fish_id: 10, description: "Catch the most Bass" },
-        CompetitionTemplate { competition_type: 1, target_fish_id: 15, description: "Catch the most Salmon" },
-        CompetitionTemplate { competition_type: 1, target_fish_id: 20, description: "Catch the most Catfish" },
-        CompetitionTemplate { competition_type: 1, target_fish_id: 25, description: "Catch the most Pike" },
-        CompetitionTemplate { competition_type: 1, target_fish_id: 0, description: "Catch the most fish (any type)" },
+        // MostFish competitions
+        CompetitionTemplate { competition_type: CompetitionType::MostFish, target_fish_id: 1, description: "Catch the most Common Fish" },
+        CompetitionTemplate { competition_type: CompetitionType::MostFish, target_fish_id: 5, description: "Catch the most Trout" },
+        CompetitionTemplate { competition_type: CompetitionType::MostFish, target_fish_id: 10, description: "Catch the most Bass" },
+        CompetitionTemplate { competition_type: CompetitionType::MostFish, target_fish_id: 15, description: "Catch the most Salmon" },
+        CompetitionTemplate { competition_type: CompetitionType::MostFish, target_fish_id: 20, description: "Catch the most Catfish" },
+        CompetitionTemplate { competition_type: CompetitionType::MostFish, target_fish_id: 25, description: "Catch the most Pike" },
+        CompetitionTemplate { competition_type: CompetitionType::MostFish, target_fish_id: 0, description: "Catch the most fish (any type)" },
         
-        // LargestFish competitions (Type 2)
-        CompetitionTemplate { competition_type: 2, target_fish_id: 5, description: "Catch the largest Trout" },
-        CompetitionTemplate { competition_type: 2, target_fish_id: 10, description: "Catch the largest Bass" },
-        CompetitionTemplate { competition_type: 2, target_fish_id: 15, description: "Catch the largest Salmon" },
-        CompetitionTemplate { competition_type: 2, target_fish_id: 30, description: "Catch the largest Tuna" },
-        CompetitionTemplate { competition_type: 2, target_fish_id: 35, description: "Catch the largest Marlin" },
-        CompetitionTemplate { competition_type: 2, target_fish_id: 0, description: "Catch the largest fish (any type)" },
+        // LargestFish competitions
+        CompetitionTemplate { competition_type: CompetitionType::LargestFish, target_fish_id: 5, description: "Catch the largest Trout" },
+        CompetitionTemplate { competition_type: CompetitionType::LargestFish, target_fish_id: 10, description: "Catch the largest Bass" },
+        CompetitionTemplate { competition_type: CompetitionType::LargestFish, target_fish_id: 15, description: "Catch the largest Salmon" },
+        CompetitionTemplate { competition_type: CompetitionType::LargestFish, target_fish_id: 30, description: "Catch the largest Tuna" },
+        CompetitionTemplate { competition_type: CompetitionType::LargestFish, target_fish_id: 35, description: "Catch the largest Marlin" },
+        CompetitionTemplate { competition_type: CompetitionType::LargestFish, target_fish_id: 0, description: "Catch the largest fish (any type)" },
         
-        // MostItems competitions (Type 3)
-        CompetitionTemplate { competition_type: 3, target_fish_id: 50, description: "Collect the most special items" },
-        CompetitionTemplate { competition_type: 3, target_fish_id: 55, description: "Collect the most treasure chests" },
-        CompetitionTemplate { competition_type: 3, target_fish_id: 60, description: "Collect the most rare lures" },
+        // MostItems competitions
+        CompetitionTemplate { competition_type: CompetitionType::MostItems, target_fish_id: 50, description: "Collect the most special items" },
+        CompetitionTemplate { competition_type: CompetitionType::MostItems, target_fish_id: 55, description: "Collect the most treasure chests" },
+        CompetitionTemplate { competition_type: CompetitionType::MostItems, target_fish_id: 60, description: "Collect the most rare lures" },
     ]
 }
 
 /// Calculate prize pool based on competition duration and winner count
 /// Longer competitions get bigger total prize pools
-fn calculate_prize_pool(duration_hours: i64, winner_count: usize, currency: &str) -> Vec<i32> {
+fn calculate_prize_pool(duration_hours: i64, winner_count: usize, currency: Currency) -> Vec<i32> {
     // Base prize pool multiplier based on duration
     let duration_multiplier = if duration_hours <= 12 {
         1.0
@@ -60,10 +102,9 @@ fn calculate_prize_pool(duration_hours: i64, winner_count: usize, currency: &str
     };
     
     // Calculate total prize pool
-    let total_prize = if currency == "COINS" {
-        (5000.0 * duration_multiplier) as i32  // 5k-12.5k COINS total
-    } else {
-        (500.0 * duration_multiplier) as i32   // 500-1250 BUCKS total
+    let total_prize = match currency {
+        Currency::Coins => (200.0 * duration_multiplier) as i32,  // 200-500 COINS total
+        Currency::Bucks => (4000.0 * duration_multiplier) as i32, // 4k-10k BUCKS total
     };
     
     // Distribute prizes logarithmically (first place gets most, decreases logarithmically)
@@ -115,7 +156,7 @@ fn calculate_winner_count(duration_hours: i64) -> usize {
 /// Service layer for business logic related to competitions
 #[async_trait]
 pub trait CompetitionsService: Send + Sync {
-    async fn get_active_competitions(&self) -> Result<Vec<Competition>, sqlx::Error>;
+    async fn get_active_competition(&self) -> Result<Option<Competition>, sqlx::Error>;
     
     async fn get_upcoming_competitions(&self) -> Result<Vec<Competition>, sqlx::Error>;
     
@@ -129,12 +170,14 @@ pub trait CompetitionsService: Send + Sync {
 }
 
 pub struct CompetitionsServiceImpl<T: CompetitionsRepository> {
+    pool: PgPool,
     competitions_repository: T,
 }
 
 impl<R: CompetitionsRepository> CompetitionsServiceImpl<R> {
-    pub fn new(competitions_repository: R) -> Self {
+    pub fn new(pool: PgPool, competitions_repository: R) -> Self {
         Self {
+            pool,
             competitions_repository,
         }
     }
@@ -142,8 +185,10 @@ impl<R: CompetitionsRepository> CompetitionsServiceImpl<R> {
 
 #[async_trait]
 impl<R: CompetitionsRepository> CompetitionsService for CompetitionsServiceImpl<R> {
-    async fn get_active_competitions(&self) -> Result<Vec<Competition>, sqlx::Error> {
-        self.competitions_repository.get_active_competitions().await
+    async fn get_active_competition(&self) -> Result<Option<Competition>, sqlx::Error> {
+        // Get all active competitions and return the first one (should only be one)
+        let competitions = self.competitions_repository.get_active_competitions().await?;
+        Ok(competitions.into_iter().next())
     }
 
     async fn get_upcoming_competitions(&self) -> Result<Vec<Competition>, sqlx::Error> {
@@ -195,34 +240,34 @@ impl<R: CompetitionsRepository> CompetitionsService for CompetitionsServiceImpl<
     }
 
     async fn generate_competitions_if_needed(&self) -> Result<Vec<Competition>, sqlx::Error> {
-        // Count scheduled and active competitions
-        let scheduled_count = self
-            .competitions_repository
-            .count_competitions_by_status("SCHEDULED".to_string())
-            .await?;
-        let active_count = self
-            .competitions_repository
-            .count_competitions_by_status("ACTIVE".to_string())
-            .await?;
+        // Start a transaction for atomic competition generation
+        let mut tx = self.pool.begin().await?;
+        
+        // Count scheduled and active competitions within the transaction
+        let scheduled_count = CompetitionsRepositoryImpl::count_competitions_by_status_tx(
+            &mut tx,
+            "SCHEDULED".to_string()
+        ).await?;
+        
+        let active_count = CompetitionsRepositoryImpl::count_competitions_by_status_tx(
+            &mut tx,
+            "ACTIVE".to_string()
+        ).await?;
 
         let total_count = scheduled_count + active_count;
 
         // If we have 10 or more competitions, no need to generate new ones
         if total_count >= 10 {
+            // Rollback the transaction (no changes made)
+            tx.rollback().await?;
             return Ok(vec![]);
         }
 
         let needed = 10 - total_count;
 
         // Get the latest competition's end time to schedule after it
-        let upcoming = self
-            .competitions_repository
-            .get_upcoming_competitions()
-            .await?;
-        let active = self
-            .competitions_repository
-            .get_active_competitions()
-            .await?;
+        let upcoming = CompetitionsRepositoryImpl::get_upcoming_competitions_tx(&mut tx).await?;
+        let active = CompetitionsRepositoryImpl::get_active_competitions_tx(&mut tx).await?;
 
         let last_end_time = upcoming
             .iter()
@@ -238,7 +283,7 @@ impl<R: CompetitionsRepository> CompetitionsService for CompetitionsServiceImpl<
         };
 
         // Generate all random parameters in a separate scope before any await calls
-        let random_params: Vec<(i64, i64, i32, i32, String, Vec<i32>)> = {
+        let random_params: Vec<(i64, i64, CompetitionType, i32, Currency, Vec<i32>)> = {
             let mut rng = rand::thread_rng();
             let templates = get_competition_templates();
             
@@ -256,16 +301,16 @@ impl<R: CompetitionsRepository> CompetitionsService for CompetitionsServiceImpl<
                     
                     // 70% coins, 30% bucks
                     let reward_currency = if rng.gen_bool(0.7) {
-                        "COINS".to_string()
+                        Currency::Coins
                     } else {
-                        "BUCKS".to_string()
+                        Currency::Bucks
                     };
                     
                     // Calculate winner count based on duration
                     let winner_count = calculate_winner_count(duration_hours);
                     
                     // Calculate prize pool based on duration and winner count
-                    let prize_pool = calculate_prize_pool(duration_hours, winner_count, &reward_currency);
+                    let prize_pool = calculate_prize_pool(duration_hours, winner_count, reward_currency);
 
                     (gap_hours, duration_hours, competition_type, target_fish_id, reward_currency, prize_pool)
                 })
@@ -274,31 +319,33 @@ impl<R: CompetitionsRepository> CompetitionsService for CompetitionsServiceImpl<
 
         let mut new_competitions = vec![];
 
+        // Create all competitions within the transaction
         for (gap_hours, duration_hours, competition_type, target_fish_id, reward_currency, prize_pool) in random_params {
             next_start_time = next_start_time + chrono::Duration::hours(gap_hours);
             let end_time = next_start_time + chrono::Duration::hours(duration_hours);
 
             let competition_id = Uuid::new_v4();
 
-            self.competitions_repository
-                .create_competition(
-                    competition_id,
-                    competition_type,
-                    target_fish_id,
-                    next_start_time,
-                    end_time,
-                    reward_currency.clone(),
-                    prize_pool.clone(),
-                )
-                .await?;
+            // Use transaction method instead of repository method
+            CompetitionsRepositoryImpl::create_competition_tx(
+                &mut tx,
+                competition_id,
+                competition_type.to_i32(),
+                target_fish_id,
+                next_start_time,
+                end_time,
+                reward_currency.to_string(),
+                prize_pool.clone(),
+            )
+            .await?;
 
             new_competitions.push(Competition {
                 competition_id,
-                competition_type,
+                competition_type: competition_type.to_string(),
                 target_fish_id,
                 start_time: next_start_time,
                 end_time,
-                reward_currency,
+                reward_currency: reward_currency.to_string(),
                 prize_pool,
                 created_at: Utc::now(),
                 status: "SCHEDULED".to_string(),
@@ -307,6 +354,9 @@ impl<R: CompetitionsRepository> CompetitionsService for CompetitionsServiceImpl<
             // Next competition starts after this one ends
             next_start_time = end_time;
         }
+
+        // Commit the transaction - all competitions created atomically
+        tx.commit().await?;
 
         Ok(new_competitions)
     }

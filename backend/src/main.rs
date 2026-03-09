@@ -1,5 +1,5 @@
 use crate::controller::authentication::authentication_routes;
-use crate::controller::competitions::competition_routes;
+use crate::controller::competitions::{active_competition_routes, competition_routes};
 use crate::controller::shop::shop_routes;
 use crate::controller::stats::stats_routes;
 use crate::controller::user::*;
@@ -189,7 +189,6 @@ async fn main() -> Result<(), rocket::Error> {
         CompetitionsServiceImpl::new(db.clone(), competitions_repository.clone())
     );
 
-    // Start the competition scheduler to automatically generate competitions once per day
     CompetitionScheduler::new(competitions_service.clone()).start();
 
     // Add here more repositories and services when your backend grows.
@@ -235,6 +234,7 @@ async fn main() -> Result<(), rocket::Error> {
         .mount("/friend", friend_routes())
         .mount("/effects", effects_routes())
         .mount("/shop", shop_routes())
+        .mount("/competition", active_competition_routes())
         .mount("/competitions", competition_routes())
         .attach(cors)
         .launch()
