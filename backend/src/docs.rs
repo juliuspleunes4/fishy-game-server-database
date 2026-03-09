@@ -1,4 +1,5 @@
 use crate::controller::authentication::*;
+use crate::controller::competitions::*;
 use crate::controller::data::*;
 use crate::controller::effects::*;
 use crate::controller::friends::*;
@@ -36,6 +37,13 @@ use utoipa::OpenApi;
     add_effect,
     remove_expired_effects,
     cleanup_all_expired_effects,
+
+    get_active_competitions,
+    get_upcoming_competitions,
+    get_competition,
+    get_competition_results,
+    submit_score,
+    generate_competitions,
 
     retreive_player_data,
 ))]

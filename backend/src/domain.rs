@@ -124,3 +124,51 @@ pub struct RemoveActiveEffectRequest {
     pub user_id: Uuid,
     pub item_id: i32,
 }
+
+// ============================================================================
+// Competition System Domain Types
+// ============================================================================
+
+/// Competition record from database
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
+pub struct Competition {
+    pub competition_id: Uuid,
+    pub competition_type: i32,
+    pub target_fish_id: i32,
+    #[schema(value_type = String, format = DateTime)]
+    pub start_time: DateTime<Utc>,
+    #[schema(value_type = String, format = DateTime)]
+    pub end_time: DateTime<Utc>,
+    pub reward_currency: String,
+    pub prize_pool: Vec<i32>,
+    #[schema(value_type = String, format = DateTime)]
+    pub created_at: DateTime<Utc>,
+    pub status: String,
+}
+
+/// Competition result/leaderboard entry
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
+pub struct CompetitionResult {
+    pub result_id: Uuid,
+    pub competition_id: Uuid,
+    pub player_id: Uuid,
+    pub score: i32,
+    #[schema(value_type = String, format = DateTime)]
+    pub last_updated: DateTime<Utc>,
+}
+
+/// Request to submit a score to a competition
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SubmitScoreRequest {
+    pub competition_id: Uuid,
+    pub player_id: Uuid,
+    pub score: i32,
+}
+
+/// Response containing leaderboard data
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct LeaderboardResponse {
+    pub competition_id: Uuid,
+    pub results: Vec<CompetitionResult>,
+}
+

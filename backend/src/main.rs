@@ -1,9 +1,14 @@
 use crate::controller::authentication::authentication_routes;
+use crate::controller::competitions::competition_routes;
 use crate::controller::stats::stats_routes;
 use crate::domain::User;
+use crate::repository::competitions::CompetitionsRepositoryImpl;
 use crate::repository::friends::FriendRepositoryImpl;
 use crate::service::authentication::*;
+use crate::service::competitions::CompetitionsService;
+use crate::service::competitions::CompetitionsServiceImpl;
 use crate::service::user::UserService;
+use crate::utils::scheduler::CompetitionScheduler;
 use crate::AuthenticationService;
 use controller::data::data_routes;
 use controller::effects::routes as effects_routes;
@@ -133,6 +138,7 @@ async fn main() -> Result<(), rocket::Error> {
     let stats_repository = StatsRepositoryImpl::new(pool.clone());
     let mail_repository = MailRepositoryImpl::new(pool.clone());
     let inventory_repository = InventoryRepositoryImpl::new(pool.clone());
+    let competitions_repository = CompetitionsRepositoryImpl::new(pool.clone());
 
     let user_service: Arc<dyn UserService> =
         Arc::new(UserServiceImpl::new(user_repository.clone(), secret_key.clone()));
@@ -164,6 +170,13 @@ async fn main() -> Result<(), rocket::Error> {
         EffectsServiceImpl::new(effects_repository.clone())
     );
 
+    let competitions_service: Arc<dyn CompetitionsService> = Arc::new(
+        CompetitionsServiceImpl::new(competitions_repository.clone())
+    );
+
+    // Start the competition scheduler to automatically generate competitions once per day
+    CompetitionScheduler::new(competitions_service.clone()).start();
+
     // Add here more repositories and services when your backend grows.
 
     // Set rocket configuration.
@@ -185,6 +198,7 @@ async fn main() -> Result<(), rocket::Error> {
         .manage(data_service)
         .manage(friend_service)
         .manage(effects_service)
+        .manage(competitions_service)
         // expose swagger ui.
         // Go to http://localhost:8000/docs to view your endpoint documentation.
         .mount(
@@ -200,6 +214,7 @@ async fn main() -> Result<(), rocket::Error> {
         .mount("/data", data_routes())
         .mount("/friend", friend_routes())
         .mount("/effects", effects_routes())
+        .mount("/competitions", competition_routes())
         .attach(cors)
         .launch()
         .await?;

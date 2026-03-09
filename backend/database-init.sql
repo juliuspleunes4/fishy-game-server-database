@@ -18,7 +18,7 @@ CREATE TABLE friend_requests (
     user_one_id UUID NOT NULL,
     user_two_id UUID NOT NULL,
     request_sender_id UUID NOT NULL,
-    request_created_time TIMESTAMPTZ NOT NULL
+    request_created_time TIMESTAMPTZ NOT NULL,
     CONSTRAINT user_order CHECK (user_one_id < user_two_id), -- Also makes sure that a player is not requesting to befriend himself
     CONSTRAINT sender_in_pair CHECK (request_sender_id = user_one_id OR request_sender_id = user_two_id),
     CONSTRAINT unique_friend_request UNIQUE (user_one_id, user_two_id)
@@ -95,4 +95,43 @@ CREATE TABLE player_effects (
 
 CREATE INDEX idx_player_effects_expiry ON player_effects(expiry_time);
 CREATE INDEX idx_player_effects_user_id ON player_effects(user_id);
+
+-- ============================================================================
+-- Competition System Tables
+-- ============================================================================
+-- Competition types: 1=MostFishCompetition, 2=LargestFishCompetition, 3=MostItemsCompetition
+-- Status: 'SCHEDULED', 'ACTIVE', 'COMPLETED'
+CREATE TABLE competitions (
+    competition_id UUID PRIMARY KEY,
+    competition_type INTEGER NOT NULL,
+    target_fish_id INTEGER NOT NULL,
+    start_time TIMESTAMPTZ NOT NULL,
+    end_time TIMESTAMPTZ NOT NULL,
+    reward_currency TEXT NOT NULL, -- 'COINS' or 'BUCKS'
+    prize_pool INTEGER[] NOT NULL, -- Array of prizes for top N players [1st, 2nd, 3rd, ...]
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    status TEXT NOT NULL DEFAULT 'SCHEDULED',
+    CONSTRAINT valid_competition_type CHECK (competition_type IN (1, 2, 3)),
+    CONSTRAINT valid_currency CHECK (reward_currency IN ('COINS', 'BUCKS')),
+    CONSTRAINT valid_status CHECK (status IN ('SCHEDULED', 'ACTIVE', 'COMPLETED')),
+    CONSTRAINT valid_times CHECK (start_time < end_time)
+);
+
+-- Competition results/leaderboard
+CREATE TABLE competition_results (
+    result_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    competition_id UUID NOT NULL REFERENCES competitions(competition_id) ON DELETE CASCADE,
+    player_id UUID NOT NULL REFERENCES users(user_id),
+    score INTEGER NOT NULL DEFAULT 0,
+    last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT unique_player_per_competition UNIQUE (competition_id, player_id)
+);
+
+-- Indexes for performance
+CREATE INDEX idx_competitions_time_range ON competitions(start_time, end_time);
+CREATE INDEX idx_competitions_status ON competitions(status);
+CREATE INDEX idx_competitions_active ON competitions(start_time, end_time) WHERE status = 'ACTIVE';
+CREATE INDEX idx_competition_results_competition ON competition_results(competition_id);
+CREATE INDEX idx_competition_results_score ON competition_results(competition_id, score DESC);
+CREATE INDEX idx_competition_results_player ON competition_results(player_id);
 
