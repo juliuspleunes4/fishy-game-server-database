@@ -1,5 +1,6 @@
 use chrono::Utc;
 use rand::Rng;
+use rand::seq::SliceRandom;
 use rocket::async_trait;
 use uuid::Uuid;
 
@@ -7,6 +8,109 @@ use crate::{
     domain::{Competition, LeaderboardResponse, SubmitScoreRequest},
     repository::competitions::CompetitionsRepository,
 };
+
+/// Predefined competition template to ensure catchable and interesting competitions
+#[derive(Clone)]
+struct CompetitionTemplate {
+    competition_type: i32,  // 1=MostFish, 2=LargestFish, 3=MostItems
+    target_fish_id: i32,
+    description: &'static str,
+}
+
+/// Get the predefined list of possible competitions
+/// These are hand-picked to ensure fish are catchable and competitions are interesting
+fn get_competition_templates() -> Vec<CompetitionTemplate> {
+    vec![
+        // MostFish competitions (Type 1)
+        CompetitionTemplate { competition_type: 1, target_fish_id: 1, description: "Catch the most Common Fish" },
+        CompetitionTemplate { competition_type: 1, target_fish_id: 5, description: "Catch the most Trout" },
+        CompetitionTemplate { competition_type: 1, target_fish_id: 10, description: "Catch the most Bass" },
+        CompetitionTemplate { competition_type: 1, target_fish_id: 15, description: "Catch the most Salmon" },
+        CompetitionTemplate { competition_type: 1, target_fish_id: 20, description: "Catch the most Catfish" },
+        CompetitionTemplate { competition_type: 1, target_fish_id: 25, description: "Catch the most Pike" },
+        CompetitionTemplate { competition_type: 1, target_fish_id: 0, description: "Catch the most fish (any type)" },
+        
+        // LargestFish competitions (Type 2)
+        CompetitionTemplate { competition_type: 2, target_fish_id: 5, description: "Catch the largest Trout" },
+        CompetitionTemplate { competition_type: 2, target_fish_id: 10, description: "Catch the largest Bass" },
+        CompetitionTemplate { competition_type: 2, target_fish_id: 15, description: "Catch the largest Salmon" },
+        CompetitionTemplate { competition_type: 2, target_fish_id: 30, description: "Catch the largest Tuna" },
+        CompetitionTemplate { competition_type: 2, target_fish_id: 35, description: "Catch the largest Marlin" },
+        CompetitionTemplate { competition_type: 2, target_fish_id: 0, description: "Catch the largest fish (any type)" },
+        
+        // MostItems competitions (Type 3)
+        CompetitionTemplate { competition_type: 3, target_fish_id: 50, description: "Collect the most special items" },
+        CompetitionTemplate { competition_type: 3, target_fish_id: 55, description: "Collect the most treasure chests" },
+        CompetitionTemplate { competition_type: 3, target_fish_id: 60, description: "Collect the most rare lures" },
+    ]
+}
+
+/// Calculate prize pool based on competition duration and winner count
+/// Longer competitions get bigger total prize pools
+fn calculate_prize_pool(duration_hours: i64, winner_count: usize, currency: &str) -> Vec<i32> {
+    // Base prize pool multiplier based on duration
+    let duration_multiplier = if duration_hours <= 12 {
+        1.0
+    } else if duration_hours <= 24 {
+        1.5
+    } else if duration_hours <= 36 {
+        2.0
+    } else {
+        2.5  // 36-48 hours
+    };
+    
+    // Calculate total prize pool
+    let total_prize = if currency == "COINS" {
+        (5000.0 * duration_multiplier) as i32  // 5k-12.5k COINS total
+    } else {
+        (500.0 * duration_multiplier) as i32   // 500-1250 BUCKS total
+    };
+    
+    // Distribute prizes logarithmically (first place gets most, decreases logarithmically)
+    let mut prizes = Vec::with_capacity(winner_count);
+    let mut remaining_pool = total_prize as f64;
+    
+    for rank in 1..=winner_count {
+        // Logarithmic decay: each rank gets less than the previous
+        // Formula: prize = remaining * (1 / (1 + log2(rank)))
+        let rank_weight = 1.0 / (1.0 + (rank as f64).log2());
+        let prize = (remaining_pool * rank_weight) as i32;
+        
+        // Ensure minimum prize of 1
+        let prize = prize.max(1);
+        prizes.push(prize);
+        
+        // Reduce remaining pool for next rank
+        remaining_pool -= prize as f64;
+        
+        // Stop if we've exhausted the pool
+        if remaining_pool <= 0.0 {
+            break;
+        }
+    }
+    
+    prizes
+}
+
+/// Calculate number of winners based on competition duration
+/// Longer competitions have more winners (10-50 range, weighted by duration)
+fn calculate_winner_count(duration_hours: i64) -> usize {
+    let mut rng = rand::thread_rng();
+    
+    if duration_hours <= 12 {
+        // Short competitions: 10-20 winners
+        rng.gen_range(10..=20)
+    } else if duration_hours <= 24 {
+        // Medium competitions: 20-35 winners
+        rng.gen_range(20..=35)
+    } else if duration_hours <= 36 {
+        // Long competitions: 30-45 winners
+        rng.gen_range(30..=45)
+    } else {
+        // Very long competitions: 40-50 winners
+        rng.gen_range(40..=50)
+    }
+}
 
 /// Service layer for business logic related to competitions
 #[async_trait]
@@ -103,12 +207,12 @@ impl<R: CompetitionsRepository> CompetitionsService for CompetitionsServiceImpl<
 
         let total_count = scheduled_count + active_count;
 
-        // If we have 3 or more competitions, no need to generate new ones
-        if total_count >= 3 {
+        // If we have 10 or more competitions, no need to generate new ones
+        if total_count >= 10 {
             return Ok(vec![]);
         }
 
-        let needed = 3 - total_count;
+        let needed = 10 - total_count;
 
         // Get the latest competition's end time to schedule after it
         let upcoming = self
@@ -136,45 +240,32 @@ impl<R: CompetitionsRepository> CompetitionsService for CompetitionsServiceImpl<
         // Generate all random parameters in a separate scope before any await calls
         let random_params: Vec<(i64, i64, i32, i32, String, Vec<i32>)> = {
             let mut rng = rand::thread_rng();
+            let templates = get_competition_templates();
+            
             (0..needed)
                 .map(|_| {
                     let gap_hours = rng.gen_range(6..=12);
                     let duration_hours = rng.gen_range(12..=48);
-                    let competition_type = rng.gen_range(1..=3);
-                    let target_fish_id = rng.gen_range(1..=100);
+                    
+                    // Pick a random template from the predefined list
+                    let template = templates.choose(&mut rng)
+                        .expect("Competition templates should not be empty");
+                    
+                    let competition_type = template.competition_type;
+                    let target_fish_id = template.target_fish_id;
+                    
+                    // 70% coins, 30% bucks
                     let reward_currency = if rng.gen_bool(0.7) {
                         "COINS".to_string()
                     } else {
                         "BUCKS".to_string()
                     };
                     
-                    let prize_pool = if reward_currency == "COINS" {
-                        vec![
-                            rng.gen_range(800..=1200),   // 1st
-                            rng.gen_range(600..=900),    // 2nd
-                            rng.gen_range(400..=600),    // 3rd
-                            rng.gen_range(300..=450),    // 4th
-                            rng.gen_range(200..=300),    // 5th
-                            rng.gen_range(150..=225),    // 6th
-                            rng.gen_range(100..=150),    // 7th
-                            rng.gen_range(75..=112),     // 8th
-                            rng.gen_range(50..=75),      // 9th
-                            rng.gen_range(20..=30),      // 10th
-                        ]
-                    } else {
-                        vec![
-                            rng.gen_range(80..=120),     // 1st
-                            rng.gen_range(60..=90),      // 2nd
-                            rng.gen_range(40..=60),      // 3rd
-                            rng.gen_range(30..=45),      // 4th
-                            rng.gen_range(20..=30),      // 5th
-                            rng.gen_range(15..=22),      // 6th
-                            rng.gen_range(10..=15),      // 7th
-                            rng.gen_range(7..=11),       // 8th
-                            rng.gen_range(5..=7),        // 9th
-                            rng.gen_range(2..=4),        // 10th
-                        ]
-                    };
+                    // Calculate winner count based on duration
+                    let winner_count = calculate_winner_count(duration_hours);
+                    
+                    // Calculate prize pool based on duration and winner count
+                    let prize_pool = calculate_prize_pool(duration_hours, winner_count, &reward_currency);
 
                     (gap_hours, duration_hours, competition_type, target_fish_id, reward_currency, prize_pool)
                 })

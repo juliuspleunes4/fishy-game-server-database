@@ -14,11 +14,11 @@ impl CompetitionScheduler {
         }
     }
 
-    /// Start the scheduler that checks and generates competitions once per day
+    /// Start the scheduler that checks and generates competitions every 6 hours
     pub fn start(self) {
         tokio::spawn(async move {
-            // Run check every 24 hours (86400 seconds)
-            let mut timer = interval(Duration::from_secs(86400));
+            // Run check every 6 hours (21600 seconds) to maintain 10 competitions
+            let mut timer = interval(Duration::from_secs(21600));
 
             // Initial generation on startup (after a short delay to let services initialize)
             tokio::time::sleep(Duration::from_secs(5)).await;
@@ -32,12 +32,12 @@ impl CompetitionScheduler {
     }
 
     async fn check_and_generate(&self) {
-        println!("[Competition Scheduler] Running daily competition check...");
+        println!("[Competition Scheduler] Running competition check (every 6 hours)...");
         
         match self.competitions_service.generate_competitions_if_needed().await {
             Ok(new_competitions) => {
                 if new_competitions.is_empty() {
-                    println!("[Competition Scheduler] No new competitions needed (already have 3+)");
+                    println!("[Competition Scheduler] No new competitions needed (already have 10+)");
                 } else {
                     println!(
                         "[Competition Scheduler] Generated {} new competition(s)",
