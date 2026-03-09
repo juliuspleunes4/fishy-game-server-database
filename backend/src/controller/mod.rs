@@ -1,5 +1,6 @@
 /// The controller builds from http requests concrete types and validates if the request is correct.
 pub mod authentication;
+pub mod competitions;
 pub mod data;
 pub mod effects;
 pub mod fishmarket;

@@ -1,16 +1,20 @@
 use crate::controller::authentication::authentication_routes;
+use crate::controller::competitions::competition_routes;
 use crate::controller::shop::shop_routes;
 use crate::controller::stats::stats_routes;
 use crate::controller::user::*;
 use crate::docs::ApiDoc;
 use crate::domain::User;
+use crate::repository::competitions::CompetitionsRepositoryImpl;
 use crate::repository::friends::FriendRepositoryImpl;
 use crate::repository::user::UserRepositoryImpl;
 use crate::service::authentication::*;
+use crate::service::competitions::CompetitionsService;
+use crate::service::competitions::CompetitionsServiceImpl;
 use crate::service::shop::ShopService;
 use crate::service::shop::ShopServiceImpl;
 use crate::service::user::UserService;
-use crate::service::user::UserServiceImpl;
+use crate::utils::scheduler::CompetitionScheduler;
 use crate::AuthenticationService;
 use controller::data::data_routes;
 use controller::effects::routes as effects_routes;
@@ -139,6 +143,7 @@ async fn main() -> Result<(), rocket::Error> {
     let stats_repository = StatsRepositoryImpl::new();
     let mail_repository = MailRepositoryImpl::new();
     let inventory_repository = InventoryRepositoryImpl::new();
+    let competitions_repository = CompetitionsRepositoryImpl::new();
 
     let user_service: Arc<dyn UserService> = Arc::new(UserServiceImpl::new(
         db.clone(),
@@ -180,6 +185,13 @@ async fn main() -> Result<(), rocket::Error> {
         inventory_repository.clone(),
     ));
 
+    let competitions_service: Arc<dyn CompetitionsService> = Arc::new(
+        CompetitionsServiceImpl::new(db.clone(), competitions_repository.clone())
+    );
+
+    // Start the competition scheduler to automatically generate competitions once per day
+    CompetitionScheduler::new(competitions_service.clone()).start();
+
     // Add here more repositories and services when your backend grows.
 
     // Set rocket configuration.
@@ -206,6 +218,7 @@ async fn main() -> Result<(), rocket::Error> {
         .manage(friend_service)
         .manage(effects_service)
         .manage(shop_service)
+        .manage(competitions_service)
         // expose swagger ui.
         // Go to http://localhost:8000/docs to view your endpoint documentation.
         .mount(
@@ -222,6 +235,7 @@ async fn main() -> Result<(), rocket::Error> {
         .mount("/friend", friend_routes())
         .mount("/effects", effects_routes())
         .mount("/shop", shop_routes())
+        .mount("/competitions", competition_routes())
         .attach(cors)
         .launch()
         .await?;
