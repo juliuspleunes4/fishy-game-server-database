@@ -2,33 +2,37 @@
 // If you see "set DATABASE_URL" errors and don't have database access, this is expected.
 // Project owner should run `cargo sqlx prepare` to generate .sqlx/ cache and commit it,
 // then all contributors can compile without DATABASE_URL while keeping type safety.
-
-use crate::domain::{Competition, CompetitionResult};
+use crate::{domain::{Competition, CompetitionResult}, entity::{competition_results, competitions}};
 use chrono::{DateTime, Utc};
 use rocket::async_trait;
-use sqlx::{Error, PgPool, Postgres, Transaction};
+use sea_orm::{
+    ActiveValue::Set, ColumnTrait, DatabaseTransaction, DbErr, EntityTrait, Order, QueryFilter,
+    QueryOrder, ActiveModelTrait, QuerySelect, PaginatorTrait,
+};
+use sea_orm::sea_query::OnConflict;
 use uuid::Uuid;
 
 #[async_trait]
 pub trait CompetitionsRepository: Send + Sync {
     /// Get all active competitions (status = 'ACTIVE')
-    async fn get_active_competitions(&self) -> Result<Vec<Competition>, sqlx::Error>;
+    async fn get_active_competitions(&self, tx: &DatabaseTransaction) -> Result<Vec<Competition>, DbErr>;
     
     /// Get all upcoming competitions (status = 'SCHEDULED')
-    async fn get_upcoming_competitions(&self) -> Result<Vec<Competition>, sqlx::Error>;
+    async fn get_upcoming_competitions(&self, tx: &DatabaseTransaction) -> Result<Vec<Competition>, DbErr>;
     
     /// Get a specific competition by ID
-    async fn get_competition_by_id(&self, competition_id: Uuid) -> Result<Option<Competition>, sqlx::Error>;
+    async fn get_competition_by_id(&self, tx: &DatabaseTransaction, competition_id: Uuid) -> Result<Option<Competition>, DbErr>;
     
     /// Get leaderboard for a specific competition
-    async fn get_competition_results(&self, competition_id: Uuid) -> Result<Vec<CompetitionResult>, sqlx::Error>;
+    async fn get_competition_results(&self, tx: &DatabaseTransaction, competition_id: Uuid) -> Result<Vec<CompetitionResult>, DbErr>;
     
     /// Submit or update a player's score for a competition
-    async fn submit_score(&self, competition_id: Uuid, player_id: Uuid, score: i32) -> Result<(), sqlx::Error>;
+    async fn submit_score(&self, tx: &DatabaseTransaction, competition_id: Uuid, player_id: Uuid, score: i32) -> Result<(), DbErr>;
     
     /// Create a new competition
     async fn create_competition(
         &self,
+        tx: &DatabaseTransaction,
         competition_id: Uuid,
         competition_type: i32,
         target_fish_id: i32,
@@ -36,103 +40,131 @@ pub trait CompetitionsRepository: Send + Sync {
         end_time: DateTime<Utc>,
         reward_currency: String,
         prize_pool: Vec<i32>,
-    ) -> Result<(), sqlx::Error>;
+    ) -> Result<(), DbErr>;
     
     /// Update competition status
-    async fn update_competition_status(&self, competition_id: Uuid, status: String) -> Result<(), sqlx::Error>;
+    async fn update_competition_status(&self, tx: &DatabaseTransaction, competition_id: Uuid, status: String) -> Result<(), DbErr>;
     
     /// Count competitions by status
-    async fn count_competitions_by_status(&self, status: String) -> Result<i64, sqlx::Error>;
+    async fn count_competitions_by_status(&self, tx: &DatabaseTransaction, status: String) -> Result<i64, DbErr>;
 }
 
 #[derive(Debug, Clone)]
-pub struct CompetitionsRepositoryImpl {
-    pool: PgPool,
-}
+pub struct CompetitionsRepositoryImpl;
 
 impl CompetitionsRepositoryImpl {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new() -> Self {
+        Self
     }
 }
 
 #[async_trait]
 impl CompetitionsRepository for CompetitionsRepositoryImpl {
-    async fn get_active_competitions(&self) -> Result<Vec<Competition>, sqlx::Error> {
-        let competitions = sqlx::query_as!(
-            Competition,
-            r#"SELECT competition_id, competition_type, target_fish_id, 
-                      start_time, end_time, reward_currency, prize_pool, 
-                      created_at, status
-               FROM competitions
-               WHERE status = 'ACTIVE'
-               ORDER BY start_time ASC"#
-        )
-        .fetch_all(&self.pool)
-        .await?;
+    async fn get_active_competitions(&self, tx: &DatabaseTransaction) -> Result<Vec<Competition>, DbErr> {
+        let models = competitions::Entity::find()
+            .filter(competitions::Column::Status.eq("ACTIVE"))
+            .order_by(competitions::Column::StartTime, Order::Asc)
+            .all(tx)
+            .await?;
 
-        Ok(competitions)
+        Ok(models
+            .into_iter()
+            .map(|m| Competition {
+                competition_id: m.competition_id,
+                competition_type: convert_type_to_string(m.competition_type),
+                target_fish_id: m.target_fish_id,
+                start_time: m.start_time.with_timezone(&Utc),
+                end_time: m.end_time.with_timezone(&Utc),
+                reward_currency: m.reward_currency,
+                prize_pool: m.prize_pool,
+                created_at: m.created_at.with_timezone(&Utc),
+                status: m.status,
+            })
+            .collect())
     }
 
-    async fn get_upcoming_competitions(&self) -> Result<Vec<Competition>, sqlx::Error> {
-        let competitions = sqlx::query_as!(
-            Competition,
-            r#"SELECT competition_id, competition_type, target_fish_id, 
-                      start_time, end_time, reward_currency, prize_pool, 
-                      created_at, status
-               FROM competitions
-               WHERE status = 'SCHEDULED'
-               ORDER BY start_time ASC"#
-        )
-        .fetch_all(&self.pool)
-        .await?;
+    async fn get_upcoming_competitions(&self, tx: &DatabaseTransaction) -> Result<Vec<Competition>, DbErr> {
+        let models = competitions::Entity::find()
+            .filter(competitions::Column::Status.eq("SCHEDULED"))
+            .order_by(competitions::Column::StartTime, Order::Asc)
+            .all(tx)
+            .await?;
 
-        Ok(competitions)
+        Ok(models
+            .into_iter()
+            .map(|m| Competition {
+                competition_id: m.competition_id,
+                competition_type: convert_type_to_string(m.competition_type),
+                target_fish_id: m.target_fish_id,
+                start_time: m.start_time.with_timezone(&Utc),
+                end_time: m.end_time.with_timezone(&Utc),
+                reward_currency: m.reward_currency,
+                prize_pool: m.prize_pool,
+                created_at: m.created_at.with_timezone(&Utc),
+                status: m.status,
+            })
+            .collect())
     }
 
-    async fn get_competition_by_id(&self, competition_id: Uuid) -> Result<Option<Competition>, sqlx::Error> {
-        let competition = sqlx::query_as!(
-            Competition,
-            r#"SELECT competition_id, competition_type, target_fish_id, 
-                      start_time, end_time, reward_currency, prize_pool, 
-                      created_at, status
-               FROM competitions
-               WHERE competition_id = $1"#,
-            competition_id
-        )
-        .fetch_optional(&self.pool)
-        .await?;
+    async fn get_competition_by_id(&self, tx: &DatabaseTransaction, competition_id: Uuid) -> Result<Option<Competition>, DbErr> {
+        let model = competitions::Entity::find_by_id(competition_id).one(tx).await?;
 
-        Ok(competition)
+        Ok(model.map(|m| Competition {
+            competition_id: m.competition_id,
+            competition_type: convert_type_to_string(m.competition_type),
+            target_fish_id: m.target_fish_id,
+            start_time: m.start_time.with_timezone(&Utc),
+            end_time: m.end_time.with_timezone(&Utc),
+            reward_currency: m.reward_currency,
+            prize_pool: m.prize_pool,
+            created_at: m.created_at.with_timezone(&Utc),
+            status: m.status,
+        }))
     }
 
-    async fn get_competition_results(&self, competition_id: Uuid) -> Result<Vec<CompetitionResult>, sqlx::Error> {
-        let results = sqlx::query_as!(
-            CompetitionResult,
-            r#"SELECT result_id, competition_id, player_id, score, last_updated
-               FROM competition_results
-               WHERE competition_id = $1
-               ORDER BY score DESC, last_updated ASC
-               LIMIT 100"#,
-            competition_id
-        )
-        .fetch_all(&self.pool)
-        .await?;
+    async fn get_competition_results(&self, tx: &DatabaseTransaction, competition_id: Uuid) -> Result<Vec<CompetitionResult>, DbErr> {
+        let models = competition_results::Entity::find()
+            .filter(competition_results::Column::CompetitionId.eq(competition_id))
+            .order_by(competition_results::Column::Score, Order::Desc)
+            .order_by(competition_results::Column::LastUpdated, Order::Asc)
+            .limit(100)
+            .all(tx)
+            .await?;
 
-        Ok(results)
+        Ok(models
+            .into_iter()
+            .map(|m| CompetitionResult {
+                result_id: m.result_id,
+                competition_id: m.competition_id,
+                player_id: m.player_id,
+                score: m.score,
+                last_updated: m.last_updated.with_timezone(&Utc),
+            })
+            .collect())
     }
 
-    async fn submit_score(&self, competition_id: Uuid, player_id: Uuid, score: i32) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            r#"INSERT INTO competition_results (competition_id, player_id, score, last_updated)
-               VALUES ($1, $2, $3, NOW())
-               ON CONFLICT (competition_id, player_id)
-               DO UPDATE SET score = $3, last_updated = NOW()"#,
-            competition_id,
-            player_id,
-            score
+    async fn submit_score(&self, tx: &DatabaseTransaction, competition_id: Uuid, player_id: Uuid, score: i32) -> Result<(), DbErr> {
+        let now = chrono::Utc::now();
+        
+        competition_results::Entity::insert(competition_results::ActiveModel {
+            result_id: Set(Uuid::new_v4()),
+            competition_id: Set(competition_id),
+            player_id: Set(player_id),
+            score: Set(score),
+            last_updated: Set(now.fixed_offset()),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                competition_results::Column::CompetitionId,
+                competition_results::Column::PlayerId,
+            ])
+            .update_columns([
+                competition_results::Column::Score,
+                competition_results::Column::LastUpdated,
+            ])
+            .to_owned()
         )
-        .execute(&self.pool)
+        .exec(tx)
         .await?;
 
         Ok(())
@@ -140,6 +172,7 @@ impl CompetitionsRepository for CompetitionsRepositoryImpl {
 
     async fn create_competition(
         &self,
+        tx: &DatabaseTransaction,
         competition_id: Uuid,
         competition_type: i32,
         target_fish_id: i32,
@@ -147,138 +180,55 @@ impl CompetitionsRepository for CompetitionsRepositoryImpl {
         end_time: DateTime<Utc>,
         reward_currency: String,
         prize_pool: Vec<i32>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            r#"INSERT INTO competitions 
-               (competition_id, competition_type, target_fish_id, start_time, end_time, 
-                reward_currency, prize_pool, status)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, 'SCHEDULED')"#,
-            competition_id,
-            competition_type,
-            target_fish_id,
-            start_time,
-            end_time,
-            reward_currency,
-            &prize_pool
-        )
-        .execute(&self.pool)
-        .await?;
+    ) -> Result<(), DbErr> {
+        let now = chrono::Utc::now();
 
-        Ok(())
-    }
-
-    async fn update_competition_status(&self, competition_id: Uuid, status: String) -> Result<(), sqlx::Error> {
-        let result = sqlx::query!(
-            r#"UPDATE competitions
-               SET status = $2
-               WHERE competition_id = $1"#,
-            competition_id,
-            status
-        )
-        .execute(&self.pool)
-        .await?;
-
-        if result.rows_affected() == 0 {
-            return Err(Error::RowNotFound);
+        competitions::ActiveModel {
+            competition_id: Set(competition_id),
+            competition_type: Set(competition_type),
+            target_fish_id: Set(target_fish_id),
+            start_time: Set(start_time.fixed_offset()),
+            end_time: Set(end_time.fixed_offset()),
+            reward_currency: Set(reward_currency),
+            prize_pool: Set(prize_pool),
+            created_at: Set(now.fixed_offset()),
+            status: Set("SCHEDULED".to_string()),
         }
+        .insert(tx)
+        .await?;
 
         Ok(())
     }
 
-    async fn count_competitions_by_status(&self, status: String) -> Result<i64, sqlx::Error> {
-        let result = sqlx::query!(
-            r#"SELECT COUNT(*) as count FROM competitions WHERE status = $1"#,
-            status
-        )
-        .fetch_one(&self.pool)
-        .await?;
+    async fn update_competition_status(&self, tx: &DatabaseTransaction, competition_id: Uuid, status: String) -> Result<(), DbErr> {
+        let competition = competitions::Entity::find_by_id(competition_id)
+            .one(tx)
+            .await?
+            .ok_or(DbErr::RecordNotFound("Competition not found".to_string()))?;
 
-        Ok(result.count.unwrap_or(0))
+        let mut active: competitions::ActiveModel = competition.into();
+        active.status = Set(status);
+        active.update(tx).await?;
+
+        Ok(())
+    }
+
+    async fn count_competitions_by_status(&self, tx: &DatabaseTransaction, status: String) -> Result<i64, DbErr> {
+        let count = competitions::Entity::find()
+            .filter(competitions::Column::Status.eq(status))
+            .count(tx)
+            .await?;
+
+        Ok(count as i64)
     }
 }
 
-impl CompetitionsRepositoryImpl {
-    /// Create a new competition within an existing transaction
-    /// This allows the service layer to coordinate multiple operations atomically
-    pub async fn create_competition_tx(
-        tx: &mut Transaction<'_, Postgres>,
-        competition_id: Uuid,
-        competition_type: i32,
-        target_fish_id: i32,
-        start_time: DateTime<Utc>,
-        end_time: DateTime<Utc>,
-        reward_currency: String,
-        prize_pool: Vec<i32>,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            r#"INSERT INTO competitions 
-               (competition_id, competition_type, target_fish_id, start_time, end_time, 
-                reward_currency, prize_pool, status)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, 'SCHEDULED')"#,
-            competition_id,
-            competition_type,
-            target_fish_id,
-            start_time,
-            end_time,
-            reward_currency,
-            &prize_pool
-        )
-        .execute(&mut **tx)
-        .await?;
-
-        Ok(())
-    }
-    
-    /// Count competitions by status within a transaction
-    pub async fn count_competitions_by_status_tx(
-        tx: &mut Transaction<'_, Postgres>,
-        status: String,
-    ) -> Result<i64, sqlx::Error> {
-        let result = sqlx::query!(
-            r#"SELECT COUNT(*) as count FROM competitions WHERE status = $1"#,
-            status
-        )
-        .fetch_one(&mut **tx)
-        .await?;
-
-        Ok(result.count.unwrap_or(0))
-    }
-    
-    /// Get all active competitions within a transaction
-    pub async fn get_active_competitions_tx(
-        tx: &mut Transaction<'_, Postgres>,
-    ) -> Result<Vec<Competition>, sqlx::Error> {
-        let competitions = sqlx::query_as!(
-            Competition,
-            r#"SELECT competition_id, competition_type, target_fish_id, 
-                      start_time, end_time, reward_currency, prize_pool, 
-                      created_at, status
-               FROM competitions 
-               WHERE status = 'ACTIVE'
-               ORDER BY start_time ASC"#
-        )
-        .fetch_all(&mut **tx)
-        .await?;
-
-        Ok(competitions)
-    }
-    
-    /// Get all upcoming competitions within a transaction
-    pub async fn get_upcoming_competitions_tx(
-        tx: &mut Transaction<'_, Postgres>,
-    ) -> Result<Vec<Competition>, sqlx::Error> {
-        let competitions = sqlx::query_as!(
-            Competition,
-            r#"SELECT competition_id, competition_type, target_fish_id, 
-                      start_time, end_time, reward_currency, prize_pool, 
-                      created_at, status
-               FROM competitions 
-               WHERE status = 'SCHEDULED'
-               ORDER BY start_time ASC"#
-        )
-        .fetch_all(&mut **tx)
-        .await?;
-
-        Ok(competitions)
+// Helper function to convert competition type integer to string
+fn convert_type_to_string(competition_type: i32) -> String {
+    match competition_type {
+        1 => "MostFish".to_string(),
+        2 => "LargestFish".to_string(),
+        3 => "MostItems".to_string(),
+        _ => format!("Unknown({})", competition_type),
     }
 }

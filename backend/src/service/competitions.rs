@@ -2,12 +2,12 @@ use chrono::Utc;
 use rand::Rng;
 use rand::seq::SliceRandom;
 use rocket::async_trait;
-use sqlx::PgPool;
+use sea_orm::{DatabaseConnection, DbErr, TransactionError, TransactionTrait};
 use uuid::Uuid;
 
 use crate::{
-    domain::{Competition, LeaderboardResponse, SubmitScoreRequest},
-    repository::competitions::{CompetitionsRepository, CompetitionsRepositoryImpl},
+    domain::{Competition, CompetitionResult, LeaderboardResponse, SubmitScoreRequest},
+    repository::competitions::CompetitionsRepository,
 };
 
 /// Competition type enum for type safety
@@ -156,58 +156,99 @@ fn calculate_winner_count(duration_hours: i64) -> usize {
 /// Service layer for business logic related to competitions
 #[async_trait]
 pub trait CompetitionsService: Send + Sync {
-    async fn get_active_competition(&self) -> Result<Option<Competition>, sqlx::Error>;
+    async fn get_active_competition(&self) -> Result<Option<Competition>, DbErr>;
     
-    async fn get_upcoming_competitions(&self) -> Result<Vec<Competition>, sqlx::Error>;
+    async fn get_upcoming_competitions(&self) -> Result<Vec<Competition>, DbErr>;
     
-    async fn get_competition_by_id(&self, competition_id: Uuid) -> Result<Option<Competition>, sqlx::Error>;
+    async fn get_competition_by_id(&self, competition_id: Uuid) -> Result<Option<Competition>, DbErr>;
     
-    async fn get_leaderboard(&self, competition_id: Uuid) -> Result<LeaderboardResponse, sqlx::Error>;
+    async fn get_leaderboard(&self, competition_id: Uuid) -> Result<LeaderboardResponse, DbErr>;
     
-    async fn submit_score(&self, request: SubmitScoreRequest) -> Result<(), sqlx::Error>;
+    async fn submit_score(&self, request: SubmitScoreRequest) -> Result<(), DbErr>;
     
-    async fn generate_competitions_if_needed(&self) -> Result<Vec<Competition>, sqlx::Error>;
+    async fn generate_competitions_if_needed(&self) -> Result<Vec<Competition>, DbErr>;
 }
 
 pub struct CompetitionsServiceImpl<T: CompetitionsRepository> {
-    pool: PgPool,
+    db: DatabaseConnection,
     competitions_repository: T,
 }
 
 impl<R: CompetitionsRepository> CompetitionsServiceImpl<R> {
-    pub fn new(pool: PgPool, competitions_repository: R) -> Self {
+    pub fn new(db: DatabaseConnection, competitions_repository: R) -> Self {
         Self {
-            pool,
+            db,
             competitions_repository,
         }
     }
 }
 
 #[async_trait]
-impl<R: CompetitionsRepository> CompetitionsService for CompetitionsServiceImpl<R> {
-    async fn get_active_competition(&self) -> Result<Option<Competition>, sqlx::Error> {
-        // Get all active competitions and return the first one (should only be one)
-        let competitions = self.competitions_repository.get_active_competitions().await?;
+impl<R: CompetitionsRepository + Clone + 'static> CompetitionsService for CompetitionsServiceImpl<R> {
+    async fn get_active_competition(&self) -> Result<Option<Competition>, DbErr> {
+        let repo = self.competitions_repository.clone();
+        
+        let competitions = self.db
+            .transaction::<_, Vec<Competition>, DbErr>(move |tx| {
+                Box::pin(async move {
+                    repo.get_active_competitions(tx).await
+                })
+            })
+            .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })?;
+        
         Ok(competitions.into_iter().next())
     }
 
-    async fn get_upcoming_competitions(&self) -> Result<Vec<Competition>, sqlx::Error> {
-        self.competitions_repository
-            .get_upcoming_competitions()
+    async fn get_upcoming_competitions(&self) -> Result<Vec<Competition>, DbErr> {
+        let repo = self.competitions_repository.clone();
+        
+        self.db
+            .transaction::<_, Vec<Competition>, DbErr>(move |tx| {
+                Box::pin(async move {
+                    repo.get_upcoming_competitions(tx).await
+                })
+            })
             .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 
-    async fn get_competition_by_id(&self, competition_id: Uuid) -> Result<Option<Competition>, sqlx::Error> {
-        self.competitions_repository
-            .get_competition_by_id(competition_id)
+    async fn get_competition_by_id(&self, competition_id: Uuid) -> Result<Option<Competition>, DbErr> {
+        let repo = self.competitions_repository.clone();
+        
+        self.db
+            .transaction::<_, Option<Competition>, DbErr>(move |tx| {
+                Box::pin(async move {
+                    repo.get_competition_by_id(tx, competition_id).await
+                })
+            })
             .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 
-    async fn get_leaderboard(&self, competition_id: Uuid) -> Result<LeaderboardResponse, sqlx::Error> {
-        let results = self
-            .competitions_repository
-            .get_competition_results(competition_id)
-            .await?;
+    async fn get_leaderboard(&self, competition_id: Uuid) -> Result<LeaderboardResponse, DbErr> {
+        let repo = self.competitions_repository.clone();
+        
+        let results = self.db
+            .transaction::<_, Vec<CompetitionResult>, DbErr>(move |tx| {
+                Box::pin(async move {
+                    repo.get_competition_results(tx, competition_id).await
+                })
+            })
+            .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })?;
 
         Ok(LeaderboardResponse {
             competition_id,
@@ -215,149 +256,154 @@ impl<R: CompetitionsRepository> CompetitionsService for CompetitionsServiceImpl<
         })
     }
 
-    async fn submit_score(&self, request: SubmitScoreRequest) -> Result<(), sqlx::Error> {
-        // Validate that the competition exists and is active
-        let competition = self
-            .competitions_repository
-            .get_competition_by_id(request.competition_id)
-            .await?;
+    async fn submit_score(&self, request: SubmitScoreRequest) -> Result<(), DbErr> {
+        let repo = self.competitions_repository.clone();
+        let competition_id = request.competition_id;
+        let player_id = request.player_id;
+        let score = request.score;
+        
+        self.db
+            .transaction::<_, (), DbErr>(move |tx| {
+                Box::pin(async move {
+                    // Validate that the competition exists and is active
+                    let competition = repo.get_competition_by_id(tx, competition_id).await?;
 
-        if competition.is_none() {
-            return Err(sqlx::Error::RowNotFound);
-        }
+                    if competition.is_none() {
+                        return Err(DbErr::RecordNotFound("Competition not found".to_string()));
+                    }
 
-        let competition = competition.unwrap();
-        if competition.status != "ACTIVE" {
-            return Err(sqlx::Error::Protocol(
-                "Competition is not active".into(),
-            ));
-        }
+                    let competition = competition.unwrap();
+                    if competition.status != "ACTIVE" {
+                        return Err(DbErr::Custom("Competition is not active".to_string()));
+                    }
 
-        // Submit the score
-        self.competitions_repository
-            .submit_score(request.competition_id, request.player_id, request.score)
+                    // Submit the score
+                    repo.submit_score(tx, competition_id, player_id, score).await
+                })
+            })
             .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 
-    async fn generate_competitions_if_needed(&self) -> Result<Vec<Competition>, sqlx::Error> {
-        // Start a transaction for atomic competition generation
-        let mut tx = self.pool.begin().await?;
+    async fn generate_competitions_if_needed(&self) -> Result<Vec<Competition>, DbErr> {
+        let repo = self.competitions_repository.clone();
         
-        // Count scheduled and active competitions within the transaction
-        let scheduled_count = CompetitionsRepositoryImpl::count_competitions_by_status_tx(
-            &mut tx,
-            "SCHEDULED".to_string()
-        ).await?;
-        
-        let active_count = CompetitionsRepositoryImpl::count_competitions_by_status_tx(
-            &mut tx,
-            "ACTIVE".to_string()
-        ).await?;
+        self.db
+            .transaction::<_, Vec<Competition>, DbErr>(move |tx| {
+                Box::pin(async move {
+                    // Count scheduled and active competitions within the transaction
+                    let scheduled_count = repo.count_competitions_by_status(tx, "SCHEDULED".to_string()).await?;
+                    let active_count = repo.count_competitions_by_status(tx, "ACTIVE".to_string()).await?;
 
-        let total_count = scheduled_count + active_count;
+                    let total_count = scheduled_count + active_count;
 
-        // If we have 10 or more competitions, no need to generate new ones
-        if total_count >= 10 {
-            // Rollback the transaction (no changes made)
-            tx.rollback().await?;
-            return Ok(vec![]);
-        }
+                    // If we have 10 or more competitions, no need to generate new ones
+                    if total_count >= 10 {
+                        return Ok(vec![]);
+                    }
 
-        let needed = 10 - total_count;
+                    let needed = (10 - total_count) as usize;
 
-        // Get the latest competition's end time to schedule after it
-        let upcoming = CompetitionsRepositoryImpl::get_upcoming_competitions_tx(&mut tx).await?;
-        let active = CompetitionsRepositoryImpl::get_active_competitions_tx(&mut tx).await?;
+                    // Get the latest competition's end time to schedule after it
+                    let upcoming = repo.get_upcoming_competitions(tx).await?;
+                    let active = repo.get_active_competitions(tx).await?;
 
-        let last_end_time = upcoming
-            .iter()
-            .chain(active.iter())
-            .map(|c| c.end_time)
-            .max()
-            .unwrap_or_else(Utc::now);
+                    let last_end_time = upcoming
+                        .iter()
+                        .chain(active.iter())
+                        .map(|c| c.end_time)
+                        .max()
+                        .unwrap_or_else(Utc::now);
 
-        let mut next_start_time = if last_end_time > Utc::now() {
-            last_end_time
-        } else {
-            Utc::now()
-        };
-
-        // Generate all random parameters in a separate scope before any await calls
-        let random_params: Vec<(i64, i64, CompetitionType, i32, Currency, Vec<i32>)> = {
-            let mut rng = rand::thread_rng();
-            let templates = get_competition_templates();
-            
-            (0..needed)
-                .map(|_| {
-                    let gap_hours = rng.gen_range(6..=12);
-                    let duration_hours = rng.gen_range(12..=48);
-                    
-                    // Pick a random template from the predefined list
-                    let template = templates.choose(&mut rng)
-                        .expect("Competition templates should not be empty");
-                    
-                    let competition_type = template.competition_type;
-                    let target_fish_id = template.target_fish_id;
-                    
-                    // 70% coins, 30% bucks
-                    let reward_currency = if rng.gen_bool(0.7) {
-                        Currency::Coins
+                    let mut next_start_time = if last_end_time > Utc::now() {
+                        last_end_time
                     } else {
-                        Currency::Bucks
+                        Utc::now()
                     };
-                    
-                    // Calculate winner count based on duration
-                    let winner_count = calculate_winner_count(duration_hours);
-                    
-                    // Calculate prize pool based on duration and winner count
-                    let prize_pool = calculate_prize_pool(duration_hours, winner_count, reward_currency);
 
-                    (gap_hours, duration_hours, competition_type, target_fish_id, reward_currency, prize_pool)
+                    // Generate all random parameters in a separate scope before any await calls
+                    let random_params: Vec<(i64, i64, CompetitionType, i32, Currency, Vec<i32>)> = {
+                        let mut rng = rand::thread_rng();
+                        let templates = get_competition_templates();
+                        
+                        (0..needed)
+                            .map(|_| {
+                                let gap_hours = rng.gen_range(6..=12);
+                                let duration_hours = rng.gen_range(12..=48);
+                                
+                                // Pick a random template from the predefined list
+                                let template = templates.choose(&mut rng)
+                                    .expect("Competition templates should not be empty");
+                                
+                                let competition_type = template.competition_type;
+                                let target_fish_id = template.target_fish_id;
+                                
+                                // 70% coins, 30% bucks
+                                let reward_currency = if rng.gen_bool(0.7) {
+                                    Currency::Coins
+                                } else {
+                                    Currency::Bucks
+                                };
+                                
+                                // Calculate winner count based on duration
+                                let winner_count = calculate_winner_count(duration_hours);
+                                
+                                // Calculate prize pool based on duration and winner count
+                                let prize_pool = calculate_prize_pool(duration_hours, winner_count, reward_currency);
+
+                                (gap_hours, duration_hours, competition_type, target_fish_id, reward_currency, prize_pool)
+                            })
+                            .collect()
+                    };
+
+                    let mut new_competitions = vec![];
+
+                    // Create all competitions within the transaction
+                    for (gap_hours, duration_hours, competition_type, target_fish_id, reward_currency, prize_pool) in random_params {
+                        next_start_time = next_start_time + chrono::Duration::hours(gap_hours);
+                        let end_time = next_start_time + chrono::Duration::hours(duration_hours);
+
+                        let competition_id = Uuid::new_v4();
+
+                        // Create competition using repository
+                        repo.create_competition(
+                            tx,
+                            competition_id,
+                            competition_type.to_i32(),
+                            target_fish_id,
+                            next_start_time,
+                            end_time,
+                            reward_currency.to_string(),
+                            prize_pool.clone(),
+                        )
+                        .await?;
+
+                        new_competitions.push(Competition {
+                            competition_id,
+                            competition_type: competition_type.to_string(),
+                            target_fish_id,
+                            start_time: next_start_time,
+                            end_time,
+                            reward_currency: reward_currency.to_string(),
+                            prize_pool,
+                            created_at: Utc::now(),
+                            status: "SCHEDULED".to_string(),
+                        });
+
+                        // Next competition starts after this one ends
+                        next_start_time = end_time;
+                    }
+
+                    Ok(new_competitions)
                 })
-                .collect()
-        };
-
-        let mut new_competitions = vec![];
-
-        // Create all competitions within the transaction
-        for (gap_hours, duration_hours, competition_type, target_fish_id, reward_currency, prize_pool) in random_params {
-            next_start_time = next_start_time + chrono::Duration::hours(gap_hours);
-            let end_time = next_start_time + chrono::Duration::hours(duration_hours);
-
-            let competition_id = Uuid::new_v4();
-
-            // Use transaction method instead of repository method
-            CompetitionsRepositoryImpl::create_competition_tx(
-                &mut tx,
-                competition_id,
-                competition_type.to_i32(),
-                target_fish_id,
-                next_start_time,
-                end_time,
-                reward_currency.to_string(),
-                prize_pool.clone(),
-            )
-            .await?;
-
-            new_competitions.push(Competition {
-                competition_id,
-                competition_type: competition_type.to_string(),
-                target_fish_id,
-                start_time: next_start_time,
-                end_time,
-                reward_currency: reward_currency.to_string(),
-                prize_pool,
-                created_at: Utc::now(),
-                status: "SCHEDULED".to_string(),
-            });
-
-            // Next competition starts after this one ends
-            next_start_time = end_time;
-        }
-
-        // Commit the transaction - all competitions created atomically
-        tx.commit().await?;
-
-        Ok(new_competitions)
+            })
+            .await
+            .map_err(|e| match e {
+                TransactionError::Connection(e) => e,
+                TransactionError::Transaction(e) => e,
+            })
     }
 }

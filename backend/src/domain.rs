@@ -131,10 +131,9 @@ pub struct RemoveActiveEffectRequest {
 // ============================================================================
 
 /// Competition record from database
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Competition {
     pub competition_id: Uuid,
-    #[sqlx(try_from = "i32")]
     pub competition_type: String,
     pub target_fish_id: i32,
     #[schema(value_type = String, format = DateTime)]
@@ -148,21 +147,9 @@ pub struct Competition {
     pub status: String,
 }
 
-impl std::convert::TryFrom<i32> for String {
-    type Error = String;
-    
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            1 => Ok("MostFish".to_string()),
-            2 => Ok("LargestFish".to_string()),
-            3 => Ok("MostItems".to_string()),
-            _ => Err(format!("Unknown competition type: {}", value)),
-        }
-    }
-}
 
 /// Competition result/leaderboard entry
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CompetitionResult {
     pub result_id: Uuid,
     pub competition_id: Uuid,

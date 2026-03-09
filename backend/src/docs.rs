@@ -32,9 +32,8 @@ use utoipa::OpenApi;
     remove_expired_effects,
     cleanup_all_expired_effects,
     
-    get_active_competitions,
+    get_active_competition,
     get_upcoming_competitions,
-    get_competition,
     get_competition_results,
     submit_score,
     generate_competitions,

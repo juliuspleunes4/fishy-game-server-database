@@ -2,6 +2,8 @@
 
 pub mod prelude;
 
+pub mod competition_results;
+pub mod competitions;
 pub mod fish_caught;
 pub mod fish_caught_area;
 pub mod fish_caught_bait;

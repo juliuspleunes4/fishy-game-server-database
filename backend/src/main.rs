@@ -13,7 +13,7 @@ use crate::service::competitions::CompetitionsService;
 use crate::service::competitions::CompetitionsServiceImpl;
 use crate::service::shop::ShopService;
 use crate::service::shop::ShopServiceImpl;
-use crate::service::user::UserService;
+use crate::service::user::{UserService, UserServiceImpl};
 use crate::utils::scheduler::CompetitionScheduler;
 use crate::AuthenticationService;
 use controller::data::data_routes;
